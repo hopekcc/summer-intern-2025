@@ -18,16 +18,12 @@ All code is maintained here collaboratively across tracks. See [`song-db-chordpr
 ---
 
 ## Folder Structure
-.
-├── LICENSE # Open source license
-├── README.md # This file
-├── docs/ # Setup guides, API specs, and weekly expectations
-├── mobile/ # Native Android client apps
-├── planning/ # Weekly check-ins, goals, retrospectives
-├── server/ # FastAPI backend, ChordPro rendering, auth
-├── shared/ # Reusable modules (utils, schemas, etc.)
-└── website/ # Admin UI using Jinja2 + FastAPI routes
-
+- planning/ # Weekly check-ins, goals, retrospectives
+- docs/ # Setup guides, API specs, and weekly expectations
+- server/ # FastAPI backend, ChordPro rendering, auth
+- mobile/ # Native Android client apps
+- website/ # Admin UI using Jinja2 + FastAPI routes
+- shared/ # Reusable modules (utils, schemas, etc.)
 
 ---
 
