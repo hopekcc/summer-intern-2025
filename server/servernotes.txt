@@ -1,0 +1,16 @@
+Server Team Notes:
+When running the app locally we can test the application with the command:
+uvicorn main:app --reload which will run the main.py file, and also reload
+to match any changes we make to the file while the server is running.
+
+When runnning on the cloud we use:
+uvicorn server.main:app --host 0.0.0.0 --port 8080
+then host that port to something (ngrok or google server)
+With host being the key difference as it keeps it active to the whole internet
+not just locally.
+
+Authentication:
+using firebase on the gettoken code, then run the curl with -H "{header}" check online
+
+
+Design Doc: https://docs.google.com/document/d/1SKpJGuIpcAb5zCQkLI52XvM7fHpkBRpWTmRlHxeBj3A/edit?usp=sharing
