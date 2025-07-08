@@ -8,20 +8,17 @@ from firebase_admin.auth import InvalidIdTokenError
 
 app = FastAPI()
 
-# CORS settings (allow all origins for testing — restrict in production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow any frontend
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 🔑 Initialize Firebase Admin using your downloaded private key
 cred = credentials.Certificate("firebase-service-account.json")
 firebase_admin.initialize_app(cred)
 
-# 🔐 Token verification dependency
 def verify_firebase_token(request: Request):
     auth_header = request.headers.get("Authorization")
     if not auth_header:
@@ -34,7 +31,7 @@ def verify_firebase_token(request: Request):
     token = parts[1]
     try:
         decoded_token = auth.verify_id_token(token)
-        return decoded_token  # contains email, uid, etc.
+        return decoded_token
     except InvalidIdTokenError as e:
         if "expired" in str(e).lower():
             raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail="Token has expired")
@@ -42,12 +39,10 @@ def verify_firebase_token(request: Request):
     except Exception as e:
         raise HTTPException(status_code=HTTP_401_UNAUTHORIZED, detail=f"Token verification failed: {str(e)}")
 
-# 🌐 Public route
 @app.get("/")
 def root():
     return {"message": "✅ FastAPI server is online. No authentication needed."}
 
-# 🔐 Protected route
 @app.get("/protected")
 def protected_route(user_data=Depends(verify_firebase_token)):
     return {
