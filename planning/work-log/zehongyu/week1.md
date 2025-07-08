@@ -1,40 +1,42 @@
 # HopeKCC Summer Intern – Weekly Work Log
 
-### Name: [Your Name]
-### Track: [Server / Website / Mobile]
-### Week: [e.g., Week 1]
-### Date: [e.g., July 1 ]
-### Hour: [e.g., 3.5 hours ]
+### Name: [Zehong Yu]
+### Track: [Website]
+### Week: [Week 1(Personally speaking it should be week 0 ??)]
+### Date: [July 2 - July 7 ]
+### Hour: [16]
 
 ---
 
 ## ✅ What's Done
-- [Short bullet points of completed tasks]
-- [Include demo links or PR links if available]
-- e.g., Implemented login flow with Firebase Auth  
-- e.g., Created unit tests for ChordPro conversion  
-- e.g., Reviewed two PR: [link to PR]
-- e.g., Submitted 2 songs: [name of songs or git URL]
+- Rewatch the both recorded replays more than one time
+- Set up the environment, make sure everything is running well and I am connected to the Github 
+- Get familiar with the Google CloudWare and Git commands and some other related operations
+- Learn some actions on Github such as pull request, merge...
+- Try to learn and get familiar with the Jinjia2 as much as possible
+- Review more than two pull requests and manage to merge two of them
+- Have at least five songs converted into ChrodPro format already
+
 
 ---
 
 ## 🔄 What's Active (with ETA)
-- [Current in-progress tasks and when you expect them to be done]
-- e.g., Styling the song editor page – ETA: July 9  
-- e.g., Sync module between host/client – ETA: Week 2  
+- Still learning Jinja2                                               ETA: Last forever
+- Self studying HTML and CSS                                          ETA: Last forever
+- Will finish the set up the web project layout as soon as possible   ETA: one week but hopefully soonner
 
 ---
 
-## ⏭️ What's Next
-- [What you'll start next]
-- e.g., Add mobile gesture control for zoom  
-- e.g., Refactor database schema for playlist handling  
+## ⏭ What's Next
+- Design Database schema
+- begin login/logout via Firebase Auth
+- Keep in touch with all my teammates and my mentors
+- Start to doing some real programming stuff
 
 ---
 
 ## 🛑 Blockers or Questions
-- [Anything you're stuck on or need help with]
-- e.g., ChordPro parser throws error on capo tag – need help debugging  
-- e.g., Not sure how to serve weekly/stable site branches on FastAPI
-
+- Need to make the decision of which ways of Firebase Auth should be used
+- Might need a more appopriate idea on the designing of DB schema
+- Need more communicate with others because the idea and experience from others are very important to me
 
