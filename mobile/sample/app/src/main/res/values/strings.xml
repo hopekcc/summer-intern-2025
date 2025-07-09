@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">test1</string>
+    <string name="open_chordpro_file">Open ChordPro File</string>
+    <string name="waiting_for_songs">Waiting for songs...</string>
+</resources>
