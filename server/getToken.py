@@ -1,8 +1,10 @@
-
+import os
+from dotenv import load_dotenv
+load_dotenv()
 import requests
 
 # 🔑 Your Firebase project Web API key (from Firebase Console)
-API_KEY = "AIzaSyBzgB6KsEmncRvh3bQTaPUp8Z2qWNCtRdM"
+API_KEY = os.getenv("FIREBASE_API_KEY")
 
 # 👤 Test user credentials (must already exist in Firebase Auth)
 EMAIL = "your_test_email@example.com"
