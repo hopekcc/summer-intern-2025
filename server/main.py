@@ -6,9 +6,16 @@ import firebase_admin
 from firebase_admin import credentials, auth
 from firebase_admin.auth import InvalidIdTokenError
 
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+FIREBASE_API_KEY = os.getenv("FIREBASE_API_KEY")
+FIREBASE_JSON_PATH = os.getenv("FIREBASE_JSON_PATH")
+
 app = FastAPI()
 
-# CORS settings (allow all origins for testing — restrict in production)
+# CORS settings (allow all origins for testing — restrict in production) change to WEBSITE URL AFTER IT IS MADE
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allow any frontend
@@ -18,7 +25,7 @@ app.add_middleware(
 )
 
 # 🔑 Initialize Firebase Admin using your downloaded private key
-cred = credentials.Certificate("firebase-service-account.json")
+cred = credentials.Certificate(FIREBASE_JSON_PATH)
 firebase_admin.initialize_app(cred)
 
 # 🔐 Token verification dependency
