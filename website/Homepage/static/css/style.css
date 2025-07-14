@@ -49,3 +49,62 @@ body {
     max-width: 100%;
     height: auto;
 }
+/* ========== Login Page ========== */
+.login-box {
+  background-color: #d3d3d3;
+  padding: 30px 40px;
+  border-radius: 10px;
+  width: 300px;
+  margin: auto;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.login-box h2 {
+  text-align: center;
+  color: #1a1a4c;
+  margin-bottom: 20px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  margin-bottom: 5px;
+  font-weight: normal;
+  color: black;
+}
+
+.form-group input {
+  padding: 8px;
+  border: none;
+  border-radius: 5px;
+  background-color: #f3f3f3;
+  font-size: 14px;
+}
+
+button[type="submit"] {
+  width: 100%;
+  padding: 10px;
+  background-color: #1a1a4c;
+  color: rgb(48, 11, 232);
+  border: none;
+  border-radius: 5px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+button[type="submit"]:hover {
+  background-color: #333366;
+}
+
+.login-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+
