@@ -1,0 +1,16 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}HOPEKCC Chord Pro Tool{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    {% include 'components/navbar.html' %}
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
