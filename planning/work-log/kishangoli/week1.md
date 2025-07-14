@@ -1,40 +1,39 @@
 # HopeKCC Summer Intern – Weekly Work Log
 
-### Name: [Your Name]
-### Track: [Server / Website / Mobile]
-### Week: [e.g., Week 1]
-### Date: [e.g., July 1 ]
-### Hour: [e.g., 3.5 hours ]
+### Name: [Kishan Goli]
+### Track: [Server]
+### Week: [1]
+### Date: [July 1st - July 7th]
+### Hour: [7]
 
 ---
 
 ## ✅ What's Done
-- [Short bullet points of completed tasks]
-- [Include demo links or PR links if available]
-- e.g., Implemented login flow with Firebase Auth  
-- e.g., Created unit tests for ChordPro conversion  
-- e.g., Reviewed two PR: [link to PR]
-- e.g., Submitted 2 songs: [name of songs or git URL]
+- Worked on the planning guide for the server team, to plan our timeline moving forward.
+- Created a firebase project/console and tied it into the server
+- Made a file to create a test token to see if it is passing correctly (it is).
+- Waiting to review PRs once they are up.
+
 
 ---
 
 ## 🔄 What's Active (with ETA)
-- [Current in-progress tasks and when you expect them to be done]
-- e.g., Styling the song editor page – ETA: July 9  
-- e.g., Sync module between host/client – ETA: Week 2  
+- Implment the Server to run on the VM (1 Week)
+- Try to get chordpro conversion working locally (ETA: 1-2 weeks)
+- Figure the schema with the Web Team (1 Week)
+
 
 ---
 
 ## ⏭️ What's Next
-- [What you'll start next]
-- e.g., Add mobile gesture control for zoom  
-- e.g., Refactor database schema for playlist handling  
+- Make sure web team and mobile team are integrated with firebase approriately
+- Batch conversion -- ChordPro conversion
+- Logs / Error activation
 
 ---
 
 ## 🛑 Blockers or Questions
-- [Anything you're stuck on or need help with]
-- e.g., ChordPro parser throws error on capo tag – need help debugging  
-- e.g., Not sure how to serve weekly/stable site branches on FastAPI
+- Not understanding the schema in relation to web/mobile team. Hard to truly make the server without a set idea for how the schema will look on their side. 
+- Gaining clarity on how the schema will look would help a lot, as we can then make the routes and make sure tokens are being passed properly from the website to the server (should be fine either way since we tested this, but can never be too careful).
 
 
