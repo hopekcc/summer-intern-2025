@@ -1,0 +1,13 @@
+# Flask secret and Firebase key
+.env
+firebase_key.json
+Homepage/.env
+
+
+# IDE/project files
+*.suo
+*.swp
+.vscode/
+.DS_Store
+
+
