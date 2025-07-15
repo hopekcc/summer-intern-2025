@@ -22,6 +22,15 @@ def login():
             json={"email": email, "password": password}
         )
 
+        ''' Debugging
+        print("🔍 FastAPI /login status:", resp.status_code)
+        print("🔍 FastAPI /login headers:", resp.headers.get("content-type"))
+        print("🔍 FastAPI /login body repr:", repr(resp.text))
+        print("→ URL:", resp.request.url)
+        print("→ Method:", resp.request.method)
+        print("→ Headers:", resp.request.headers.get("Content-Type"))
+        '''
+
         if resp.ok:
             data = resp.json()
             session["idToken"]    = data["idToken"]
