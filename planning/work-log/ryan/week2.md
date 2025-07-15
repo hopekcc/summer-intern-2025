@@ -42,5 +42,6 @@
 ## 🛑 Blockers or Questions
 - Not sure how the Server team would like to collect and store information. Maybe using DynamoDB?
 - Also not too sure the tools to make the login information found? Struggling to debug our code and not sure if we linked it up properly or right server(server team said 8080 but I linked it to 8000?)
+- Not sure if my sensitive data is hidden?a I got a notification from GitGuardian saying Generic High Entropy Secret accessible on GitHub but on the repository I cannot find the leaked key?
 
 
