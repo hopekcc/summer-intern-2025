@@ -8,5 +8,5 @@ firebase_key.json
 *.swp
 .vscode/
 .DS_Store
-
+**/.DS_Store
 
