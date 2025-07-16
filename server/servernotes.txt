@@ -14,3 +14,5 @@ using firebase on the gettoken code, then run the curl with -H "{header}" check 
 
 
 Design Doc: https://docs.google.com/document/d/1SKpJGuIpcAb5zCQkLI52XvM7fHpkBRpWTmRlHxeBj3A/edit?usp=sharing
+
+Web Design Doc: https://docs.google.com/document/d/1SYdVrjvIY-TiGjU9n9gsqoCrFMuRPRqqa4nScU_E0mo/edit?usp=sharing
