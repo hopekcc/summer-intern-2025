@@ -1,16 +1,20 @@
 import os
-from dotenv import load_dotenv
-load_dotenv()
 import requests
+from dotenv import load_dotenv
 
-# 🔑 Your Firebase project Web API key (from Firebase Console)
+# === Load environment variables ===
+load_dotenv()
 API_KEY = os.getenv("FIREBASE_API_KEY")
 
-# 👤 Test user credentials (must already exist in Firebase Auth)
+# === Test user credentials (must be set in .env or hardcoded safely) ===
 EMAIL = "your_test_email@example.com"
 PASSWORD = "your_test_password"
 
-# 🔐 Firebase Auth REST API endpoint
+if not API_KEY:
+    print("❌ Missing FIREBASE_API_KEY in environment.")
+    exit(1)
+
+# === Firebase Auth endpoint ===
 url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={API_KEY}"
 
 payload = {
@@ -19,13 +23,17 @@ payload = {
     "returnSecureToken": True
 }
 
-# 📨 Make the request
-response = requests.post(url, json=payload)
-
-# 📋 Print results
-if response.status_code == 200:
+# === Make request ===
+try:
+    response = requests.post(url, json=payload)
+    response.raise_for_status()
     id_token = response.json()["idToken"]
     print("✅ Firebase ID Token:")
     print(id_token)
-else:
-    print("❌ Login failed:", response.json())
+except requests.exceptions.RequestException as e:
+    print("❌ Login request failed:", e)
+    if response.content:
+        try:
+            print(response.json())
+        except Exception:
+            print(response.content.decode())
