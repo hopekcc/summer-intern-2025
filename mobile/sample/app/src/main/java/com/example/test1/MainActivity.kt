@@ -24,6 +24,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var openFileLauncher: ActivityResultLauncher<Intent>
     private lateinit var song: TextView
     private lateinit var btnOpenFile: Button
+    private lateinit var openbutton: Button
+    private lateinit var textView2: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,6 +35,11 @@ class MainActivity : ComponentActivity() {
         song.text = "Hello, world!"
 
         btnOpenFile = findViewById((R.id.btnOpenFile))
+
+        openbutton = findViewById((R.id.openbutton))
+
+        textView2 = findViewById(R.id.textView2)
+
         btnOpenFile.setOnClickListener {
             CoroutineScope(Dispatchers.IO).launch {
                 val result =
@@ -42,6 +49,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
             enableEdgeToEdge()
+        }
+
+        openbutton.setOnClickListener {
+            CoroutineScope(Dispatchers.IO).launch {
+                val result =
+                    fetchTextFromWeb("https://raw.githubusercontent.com/hopekcc/song-db-chordpro/refs/heads/main/mattgraham-songs/10000%20Reasons.cho") // Simulate background work
+                withContext(Dispatchers.Main) {
+                    textView2.text = result // ✅ Safe UI update on main thread
+                }
+            }
         }
     }
 }
