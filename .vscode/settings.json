@@ -1,0 +1,19 @@
+{
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/.DS_Store": true,
+        "**/Thumbs.db": true,
+        "server/firebase-service-account.json": true,
+        "server/.env": true,
+        "server/.venvServer": true,
+        "server/__pycache__": true
+    },
+    "hide-files.files": [
+        "server/firebase-service-account.json",
+        "server/.env",
+        "server/.venvServer",
+        "server/__pycache__"
+    ]
+}
