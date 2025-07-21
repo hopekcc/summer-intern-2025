@@ -19,7 +19,7 @@ ENV PYTHONUNBUFFERED True
 EXPOSE 8080
 
 # 7. Start the app with Gunicorn (recommended for production)
-#CMD ["gunicorn", "-b", ":8080", "app:app"]
+CMD ["gunicorn", "-b", ":8080", "app:app"]
 
 #TESTING 
-CMD ["python", "app.py"]
+#CMD ["python", "app.py"]
