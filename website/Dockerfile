@@ -7,6 +7,8 @@ WORKDIR /app
 # 3. Copy all your app files into the container
 COPY Homepage/Homepage/ .
 
+COPY requirements.txt .
+
 # 4. Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
