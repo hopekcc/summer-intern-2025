@@ -1,40 +1,34 @@
 # HopeKCC Summer Intern – Weekly Work Log
 
-### Name: [Your Name]
-### Track: [Server / Website / Mobile]
-### Week: [e.g., Week 1]
-### Date: [e.g., July 1 ]
-### Hour: [e.g., 3.5 hours ]
+### Name: [Jonathan Yu]
+### Track: [Mobile]
+### Week: [2]
+### Date: [7/9-7/15]
+### Hour: [16]
 
 ---
 
 ## ✅ What's Done
-- [Short bullet points of completed tasks]
-- [Include demo links or PR links if available]
-- e.g., Implemented login flow with Firebase Auth  
-- e.g., Created unit tests for ChordPro conversion  
-- e.g., Reviewed two PR: [link to PR]
-- e.g., Submitted 2 songs: [name of songs or git URL]
+- Watched tutorial https://youtu.be/dzUc9vrsldM?si=RgCpefNnhZ82ckSp 
+- Finished up to Unit 4 Android Basics
+- Reviewed Ryan's song-db PR: https://github.com/hopekcc/song-db-chordpro/pull/2
+- Worked on button functionality to display ChordPro text 
+- Uploaded Worship Song folder converted into ChordPro Notation
 
 ---
 
 ## 🔄 What's Active (with ETA)
-- [Current in-progress tasks and when you expect them to be done]
-- e.g., Styling the song editor page – ETA: July 9  
-- e.g., Sync module between host/client – ETA: Week 2  
+- Committing changes for button function (by week 3)
+- Finish android course (by week 3)
 
 ---
 
 ## ⏭️ What's Next
-- [What you'll start next]
-- e.g., Add mobile gesture control for zoom  
-- e.g., Refactor database schema for playlist handling  
+- Play with more Kotlin functions to create song lists
 
 ---
 
 ## 🛑 Blockers or Questions
-- [Anything you're stuck on or need help with]
-- e.g., ChordPro parser throws error on capo tag – need help debugging  
-- e.g., Not sure how to serve weekly/stable site branches on FastAPI
+- Not sure how to commit app changes after zipping project file and editing it
 
 
