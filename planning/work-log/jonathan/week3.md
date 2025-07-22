@@ -1,40 +1,40 @@
 # HopeKCC Summer Intern – Weekly Work Log
 
-### Name: [Your Name]
-### Track: [Server / Website / Mobile]
-### Week: [e.g., Week 1]
-### Date: [e.g., July 1 ]
-### Hour: [e.g., 3.5 hours ]
+### Name: Jonathan Yu
+### Track: Mobile
+### Week: 3
+### Date: 7/15-7/21
+### Hour: 16
 
 ---
 
 ## ✅ What's Done
-- [Short bullet points of completed tasks]
-- [Include demo links or PR links if available]
-- e.g., Implemented login flow with Firebase Auth  
-- e.g., Created unit tests for ChordPro conversion  
-- e.g., Reviewed two PR: [link to PR]
-- e.g., Submitted 2 songs: [name of songs or git URL]
+- Finished up to Unit 5 Android Basics Compose course about layouts, screens, etc. (this unit took me the longest)
+- Added cards and linear layout in sample app project XML file (not pushed yet) demo: [https://youtu.be/3m-OBWjIWnU](url)
+- Added 5 new songs: Cherry Wine by Grent Perez, Clementine by Grent Perez, Heartbreak Anniversary by Giveon, Twenties by Giveon, and Like I Want You by Giveon [https://github.com/hopekcc/song-db-chordpro/pull/5](url)
+- Looked more into Git Operations to try to push files properly
+- Reviewed Aakash's songs [https://github.com/hopekcc/song-db-chordpro/pull/3](url)
+- Reviewed Kishan's songs [https://github.com/hopekcc/song-db-chordpro/pull/4](url)
 
 ---
 
 ## 🔄 What's Active (with ETA)
-- [Current in-progress tasks and when you expect them to be done]
-- e.g., Styling the song editor page – ETA: July 9  
-- e.g., Sync module between host/client – ETA: Week 2  
+- Thinking about real ChordPro app layout and structure (ongoing)
+- Learning more about Android Studio (ongoing)
+- Finish Android Studio Basics Course (by week 4)
+- Keep learning Git operations (ongoing)
 
 ---
 
 ## ⏭️ What's Next
-- [What you'll start next]
-- e.g., Add mobile gesture control for zoom  
-- e.g., Refactor database schema for playlist handling  
+- Start developing basic features for real ChordPro app
+- Keep updating song database and reviewing songs
+- Create ChordPro readme file? 
 
 ---
 
 ## 🛑 Blockers or Questions
-- [Anything you're stuck on or need help with]
-- e.g., ChordPro parser throws error on capo tag – need help debugging  
-- e.g., Not sure how to serve weekly/stable site branches on FastAPI
+- Not sure if we should use traditional Android development with XML or development with Compose
+- Not sure how to push the file well, will probably rebase everything and start cleanly for the real ChordPro file
 
 
