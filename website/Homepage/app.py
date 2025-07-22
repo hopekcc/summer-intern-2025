@@ -1,12 +1,14 @@
 
+import os
 from flask import Flask, render_template, request
 
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return render_template('home.html', username='Ryan', insert_text='Wish you have a good day!!!')
+    return render_template('home.html', username='Mentor', insert_text='Welcome to our demo!!!')
 
+# CHORDPRO PREVIEW
 @app.route('/preview', methods=['GET', 'POST'])
 def preview():
     if request.method == 'POST':
@@ -14,6 +16,7 @@ def preview():
         return render_template('preview.html', content=chordpro_text)
     return render_template('preview.html', content=None)
 
+# ARTIST SEARCH METHOD
 @app.route('/search_artist', methods=['GET'])
 def search_artist():
     # Now all of them are all fake names , will update later by connecting to the database
@@ -33,7 +36,7 @@ def search_artist():
     filtered = [artist for artist in artists if artist.upper().startswith(letter)]
 
     return render_template('search_artist.html', letter=letter, artists=filtered)
-
+# TITLE SEARCH METHOD
 @app.route('/search_title', methods=['GET', 'POST'])
 def search_title():
     # fake songs
@@ -66,6 +69,7 @@ def search_title():
     return render_template('search_title.html', keyword=keyword, results=results)
 
 
-
+# GCP Hosting
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port, debug=True)

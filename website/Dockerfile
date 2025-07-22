@@ -5,7 +5,7 @@ FROM python:3.10-slim
 WORKDIR /app
 
 # 3. Copy all your app files into the container
-COPY Homepage/Homepage/ .
+COPY Homepage/ .
 
 COPY requirements.txt .
 
