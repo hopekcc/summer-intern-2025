@@ -4,7 +4,7 @@
 ### Track: Website
 ### Week: Week 3
 ### Date: July 22
-### Hour: 12 Hours
+### Hour: 14 Hours
 
 ---
 
@@ -15,6 +15,7 @@
 - Completed design schema for search pages
 - Met up with Zehong to merge our branches together to create a branch that is ready to demo
 - Added 10 songs
+- Helped my teammate debug his Git
 
 ---
 
