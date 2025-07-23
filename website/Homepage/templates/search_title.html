@@ -1,0 +1,27 @@
+
+{% extends 'base.html' %}
+
+{% block title %}Search Song By Title{% endblock %}
+
+{% block content %}
+<div class="welcome-section">
+    <div class="welcome-text">
+        <h1>Search Song By Title</h1>
+        <form method="post">
+            <input type="text" name="keyword" placeholder="Enter song title" value="{{ keyword }}">
+            <button type="submit" class="btn-primary">Search</button>
+        </form>
+
+        {% if keyword %}
+            <h2>Results for "{{ keyword }}"</h2>
+            <ul>
+                {% for song in results %}
+                    <li>{{ song }}</li>
+                {% else %}
+                    <li>No songs found.</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
