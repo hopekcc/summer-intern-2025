@@ -37,7 +37,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
         setContent {
             var titleText by remember { mutableStateOf("Tech meets Music") }
             val navController = rememberNavController()
@@ -75,6 +74,16 @@ class MainActivity : ComponentActivity() {
                     composable("library") {
                         LibraryScreen()
                     }
+                }
+            }
+        }
+
+        openbutton.setOnClickListener {
+            CoroutineScope(Dispatchers.IO).launch {
+                val result =
+                    fetchTextFromWeb("https://raw.githubusercontent.com/hopekcc/song-db-chordpro/refs/heads/main/mattgraham-songs/10000%20Reasons.cho") // Simulate background work
+                withContext(Dispatchers.Main) {
+                    textView2.text = result // ✅ Safe UI update on main thread
                 }
             }
         }
