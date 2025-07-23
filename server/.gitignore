@@ -10,3 +10,5 @@ logs/
 pdf_testing/
 /song_database
 security/
+room_database/
+tests/
