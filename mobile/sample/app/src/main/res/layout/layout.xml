@@ -24,17 +24,4 @@
             android:textSize="16sp"
             android:text="@string/waiting_for_songs"/>
     </ScrollView>
-
-    <Button
-        android:id="@+id/openbutton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Jonathan" />
-
-    <TextView
-        android:id="@+id/textView2"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Song" />
-
 </LinearLayout>
