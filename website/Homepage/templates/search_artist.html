@@ -1,0 +1,28 @@
+
+{% extends 'base.html' %}
+
+{% block title %}Search By Artist{% endblock %}
+
+{% block content %}
+<div class="welcome-section">
+    <div class="welcome-text">
+        <h1>Search By Artist</h1>
+        <p>Click a letter below to filter artists by their name:</p>
+        
+        <div style="margin-bottom: 1rem;">
+            {% for l in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' %}
+                <a href="{{ url_for('search_artist', letter=l) }}" style="margin-right: 0.5rem;">{{ l }}</a>
+            {% endfor %}
+        </div>
+
+        <h2>Artists starting with "{{ letter }}"</h2>
+        <ul>
+            {% for artist in artists %}
+                <li>{{ artist }}</li>
+            {% else %}
+                <li>No artists found.</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}
