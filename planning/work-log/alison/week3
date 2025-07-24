@@ -1,0 +1,40 @@
+# HopeKCC Summer Intern – Weekly Work Log
+
+### Name: Alison
+### Track: Mobile
+### Week: Week 3
+### Date: July 16-22
+### Hour: 17 hrs
+
+---
+
+## ✅ What's Done
+
+- Completed Unit 3 of Android Basics
+    - More Kotlin fundamentals
+    - Build a scrollable list
+    - Build beautiful apps
+- Started Unit 4 of Android Basics
+- Played around with the UI and functions of the sample project
+- submitted 20 chordpro songs
+- start looking at Firebase Studio
+
+---
+
+## 🔄 What's Active (with ETA)
+
+- Unit 4 - ETA: Week 4
+
+---
+
+## ⏭️ What's Next
+- [What you'll start next]
+- Unit 4: Navigation and app architecture
+- Unit 5: Connect to the internet
+- Unit 6: Data persistence
+
+---
+
+## 🛑 Blockers or Questions
+How does the song selection/fetcching work?
+Is MainActivity.kt where all the app layout code should be?
