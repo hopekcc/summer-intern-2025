@@ -1,0 +1,21 @@
+
+{% extends 'base.html' %}
+
+{% block title %}Welcome | HOPEKCC{% endblock %}
+
+{% block content %}
+<section class="welcome-section">
+    <div class="welcome-text">
+        <h1>Welcome {{ username }}!</h1>
+        <p>Welcome to our app! Feel free to look around {{ insert_text }}</p>
+        <div class="buttons">
+            <a href="/tutorial" class="btn">Tutorial</a>
+            <a href="/get-started" class="btn btn-primary">Get Started</a>
+        </div>
+    </div>
+    <div class="screenshot">
+        <img src="{{ url_for('static', filename='img/home_image.png') }}" alt="Team Screenshot">
+        <p class="caption">^ PLACEHOLDER PICTURE</p>
+    </div>
+</section>
+{% endblock %}

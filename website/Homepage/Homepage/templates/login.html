@@ -1,0 +1,43 @@
+{# templates/login.html #}
+{% extends 'base.html' %}
+{% block title %}Login{% endblock %}
+
+{% block content %}
+  <div class="login-wrapper">
+    <div class="login-box">
+      <h2>Login</h2>
+
+      {% with msgs = get_flashed_messages() %}
+        {% if msgs %}
+          <p class="flash">{{ msgs[0] }}</p>
+        {% endif %}
+      {% endwith %}
+
+      <form method="POST" action="{{ url_for('login') }}">
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            placeholder="you@example.com"
+            required
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            placeholder="enter here"
+            required
+          >
+        </div>
+
+        <button type="submit">Login</button>
+      </form>
+    </div>
+  </div>
+{% endblock %}
