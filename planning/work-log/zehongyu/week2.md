@@ -36,4 +36,3 @@
 - Actually can not understand what should appear after successfully log in by myself 
 - Might need a more appopriate outline about what is backend doing and how can the frontend and backend connect with each other
 - Need more communicate with others (especially backend team )because the idea and experience are very important and can not be done without their help
-
