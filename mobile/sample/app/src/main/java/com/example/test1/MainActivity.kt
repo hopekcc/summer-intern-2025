@@ -1,37 +1,34 @@
 package com.example.test1
 
+import android.R.attr.onClick
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.annotation.DrawableRes
-import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ModifierLocalBeyondBoundsLayout
-import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight.Companion.Bold
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
 import androidx.navigation.compose.NavHost
 import kotlinx.coroutines.*
 import org.jsoup.Jsoup
 import java.io.IOException
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,12 +45,12 @@ class MainActivity : ComponentActivity() {
             ) { innerPadding ->
                 NavHost(
                     navController = navController,
-                    startDestination = "songScreen",
+                    startDestination = "HomeScreen",
                     modifier = Modifier.padding(innerPadding)
                 )
                 {
-                    composable("songScreen") {
-                        SongScreen(
+                    composable("HomeScreen") {
+                        HomeScreen(
                             titleText = titleText,
                             onButtonClick = {
                                 CoroutineScope(Dispatchers.IO).launch {
@@ -69,12 +66,34 @@ class MainActivity : ComponentActivity() {
                     composable("search") {
                         SearchScreen()
                     }
+                    composable("sync") {
+                        SyncScreen()
+                    }
                     composable("profile") {
-                        ProfileScreen()
+                        ProfileScreen(navController)
                     }
-                    composable("library") {
-                        LibraryScreen()
+                    composable("profilePlaylist1") {
+                        profilePlaylist1()
                     }
+                    composable("profilePlaylist2") {
+                        profilePlaylist2()
+                    }
+                    composable("profilePlaylist3") {
+                        profilePlaylist3()
+                    }
+                    composable("playlist4") {
+                        playlist4()
+                    }
+                    composable("playlist5") {
+                        playlist5()
+                    }
+                    composable("allPlaylists") {
+                        allPlaylists(navController)
+                    }
+                    composable("newPlaylistName") {
+                        newPlaylistName()
+                    }
+
                 }
             }
         }
@@ -93,7 +112,7 @@ fun fetchTextFromWeb(url: String): String {
 
 
 @Composable
-fun SongScreen(
+fun HomeScreen(
     titleText: String,
     onButtonClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -116,8 +135,9 @@ fun SongScreen(
 
 @Composable
 fun SearchScreen() {
-    Box(modifier = Modifier.fillMaxSize()
-                            .padding(30.dp)) {
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .padding(30.dp)) {
         Text(
             "Search",
             fontSize = 30.sp,
@@ -125,33 +145,37 @@ fun SearchScreen() {
         )
     }
 }
+
 @Composable
-fun ProfileScreen() {
-    Box(modifier = Modifier.fillMaxSize()
-                            .padding(30.dp)) {
-        Text("Profile",
+fun SyncScreen() {
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .padding(30.dp)) {
+        Text(
+            "Sync",
             fontSize = 30.sp,
-            fontWeight = Bold)
+            fontWeight = Bold
+        )
     }
 }
 
-@Composable
-fun LibraryScreen() {
-    Box(modifier = Modifier.fillMaxSize()
-                            .padding(30.dp)) {
-        Text("Library",
-            fontSize = 30.sp,
-            fontWeight = Bold)
-//        LazyColumn(contentPadding = it) {
-//            items(savedSongs) {
-//                SavedSongItem(
-//                    savedSong = it,
-//                    modifier = Modifier.padding()
-//                )
-//            }
-//        }
-    }
-}
+//@Composable
+//fun LibraryScreen() {
+//    Box(modifier = Modifier.fillMaxSize()
+//                            .padding(30.dp)) {
+//        Text("Library",
+//            fontSize = 30.sp,
+//            fontWeight = Bold)
+////        LazyColumn(contentPadding = it) {
+////            items(savedSongs) {
+////                SavedSongItem(
+////                    savedSong = it,
+////                    modifier = Modifier.padding()
+////                )
+////            }
+////        }
+//    }
+//}
 
 //@Composable
 //fun SavedSongItem(
@@ -166,6 +190,369 @@ fun LibraryScreen() {
 //        }
 //    }
 //}
+
+
+@Composable
+fun ProfileScreen(navController: NavController) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(25.dp)
+    ) {
+        Row {
+            val profilePicture = painterResource(R.drawable.user_icon_on_transparent_background_free_png)
+            Image(
+                painter = profilePicture, //ADD change pfp icon (pencil)
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(90.dp)
+                    .clip(CircleShape)
+            )
+            Column(
+                modifier = Modifier.padding(start = 15.dp)
+            ) {
+                Text(
+                    stringResource(R.string.username),
+                    fontSize = 35.sp,
+                    fontWeight = Bold
+                )
+
+                val idNumber = stringResource(R.string.idNum) + " " + stringResource(R.string.id)
+                Text(
+                    idNumber,
+                    fontSize = 18.sp,
+                    fontWeight = Bold
+                )
+
+                Row() {
+                    val followers = stringResource(R.string.followers) + " " + stringResource(R.string.followerCount)
+                    Text(
+                        followers,
+                        fontSize = 16.sp
+                    )
+                    Text("    ")
+                    val following = stringResource(R.string.following) + " " + stringResource(R.string.followingCount)
+                    Text(
+                        following,
+                        fontSize = 16.sp
+                    )
+                }
+            }
+        }
+        Column {
+            Spacer(modifier = Modifier.height(120.dp))
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Button(
+                    onClick = { navController.navigate("profilePlaylist1") },
+                    modifier = Modifier
+                        .height(60.dp)
+                        .width(350.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.playlist1),
+                        fontSize = 35.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(15.dp))
+
+                Button(
+                    onClick = { navController.navigate("profilePlaylist2") },
+                    modifier = Modifier
+                        .height(60.dp)
+                        .width(350.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.playlist2),
+                        fontSize = 35.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(15.dp))
+
+                Button(
+                    onClick = { navController.navigate("profilePlaylist3") },
+                    modifier = Modifier
+                        .height(60.dp)
+                        .width(350.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.playlist3),
+                        fontSize = 35.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(15.dp))
+
+                Button(
+                    onClick = {navController.navigate("allPlaylists")} ) {
+                    Text(stringResource(R.string.seeMore))
+                }
+
+                Spacer(modifier = Modifier.height(200.dp))
+
+                Button(
+                    onClick = {navController.navigate("newPlaylistName")},
+                    modifier = Modifier
+                        .height(60.dp)
+                        .width(250.dp)) {
+                    Text(stringResource(R.string.createNewPlaylist),
+                        fontSize = 20.sp)
+                }
+
+            }
+
+        }
+
+    }
+}
+
+@Composable
+fun songButton(onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = { onClick() },
+        modifier = Modifier.width(350.dp)
+    ) {
+        Row(Modifier.fillMaxWidth()) {
+            Text("Song Name")
+            Text("Song Artist")
+        }
+    }
+}
+@Composable
+fun profilePlaylist1() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(30.dp)
+    ) {
+        Column {
+            Text(
+                "Playlist 1 Name",
+                fontSize = 30.sp,
+                fontWeight = Bold
+            )
+            Spacer(modifier = Modifier.height(15.dp))
+
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+         }
+    }
+}
+@Composable
+fun profilePlaylist2() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(30.dp)
+    ) {
+        Column {
+            Text(
+                "Playlist 2 Name",
+                fontSize = 30.sp,
+                fontWeight = Bold
+            )
+            Spacer(modifier = Modifier.height(15.dp))
+
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+        }
+    }
+}
+@Composable
+fun profilePlaylist3() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(30.dp)
+    ) {
+        Column {
+            Text(
+                "Playlist 3 Name",
+                fontSize = 30.sp,
+                fontWeight = Bold
+            )
+            Spacer(modifier = Modifier.height(15.dp))
+
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+
+        }
+    }
+}
+@Composable
+fun playlist4() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(30.dp)
+    ) {
+        Column {
+            Text(
+                "Playlist 4 Name",
+                fontSize = 30.sp,
+                fontWeight = Bold
+            )
+            Spacer(modifier = Modifier.height(15.dp))
+
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+
+        }
+    }
+}
+@Composable
+fun playlist5() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(30.dp)
+    ) {
+        Column {
+            Text(
+                "Playlist 5 Name",
+                fontSize = 30.sp,
+                fontWeight = Bold
+            )
+            Spacer(modifier = Modifier.height(15.dp))
+
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+            songButton(onClick = {})
+        }
+    }
+}
+
+@Composable
+fun allPlaylists(navController: NavController) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(30.dp)
+    ) {
+        Text("All Playlists",
+            fontSize = 40.sp)
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.height(60.dp))
+
+            Button(
+                onClick = { navController.navigate("profilePlaylist1") },
+                modifier = Modifier
+                    .height(60.dp)
+                    .width(350.dp)
+            ) {
+                Text(
+                    stringResource(R.string.playlist1),
+                    fontSize = 35.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(15.dp))
+
+            Button(
+                onClick = { navController.navigate("profilePlaylist2") },
+                modifier = Modifier
+                    .height(60.dp)
+                    .width(350.dp)
+            ) {
+                Text(
+                    stringResource(R.string.playlist2),
+                    fontSize = 35.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(15.dp))
+
+            Button(
+                onClick = { navController.navigate("profilePlaylist3") },
+                modifier = Modifier
+                    .height(60.dp)
+                    .width(350.dp)
+            ) {
+                Text(
+                    stringResource(R.string.playlist3),
+                    fontSize = 35.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(15.dp))
+
+            Button(
+                onClick = { navController.navigate("playlist4") },
+                modifier = Modifier
+                    .height(60.dp)
+                    .width(350.dp)
+            ) {
+                Text(
+                    stringResource(R.string.playlist4),
+                    fontSize = 35.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(15.dp))
+
+            Button(
+                onClick = { navController.navigate("playlist5") },
+                modifier = Modifier
+                    .height(60.dp)
+                    .width(350.dp)
+            ) {
+                Text(
+                    stringResource(R.string.playlist5),
+                    fontSize = 35.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun newPlaylistName() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(30.dp)
+    ) {
+        Text(stringResource(R.string.newPlaylistName),
+            fontSize = 35.sp)
+    }
+}
+
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -195,14 +582,14 @@ fun TopAppBar(modifier: Modifier = Modifier) {
 
 @Composable
 fun BottomNavigationBar(navController: NavHostController) {
-    val items = listOf("songScreen", "search", "profile", "library")
+    val items = listOf("HomeScreen", "search", "sync", "profile")
     NavigationBar {
         items.forEach { screen ->
             val icon = when (screen) {
-                "songScreen" -> R.drawable.musical_note_flat_icon_png
-                "profile" -> R.drawable.user_icon_on_transparent_background_free_png
-                "library" -> R.drawable.songlibrary
+                "HomeScreen" -> R.drawable.musical_note_flat_icon_png
                 "search" -> R.drawable.search_logo
+                "sync" -> R.drawable.songlibrary
+                "profile" -> R.drawable.user_icon_on_transparent_background_free_png
                 else -> R.drawable.musical_note_flat_icon_png
             }
             NavigationBarItem(
@@ -218,10 +605,10 @@ fun BottomNavigationBar(navController: NavHostController) {
                 label = {
                     Text(
                         when (screen) {
-                            "songScreen" -> "Home"
-                            "profile" -> "Profile"
-                            "library" -> "Library"
+                            "HomeScreen" -> "Home"
                             "search" -> "Search"
+                            "sync" -> "Sync"
+                            "profile" -> "Profile"
                             else -> "Menu"
                         }
                     )
@@ -231,30 +618,37 @@ fun BottomNavigationBar(navController: NavHostController) {
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun SongScreenPreview() {
-    SongScreen(
-        titleText = "Tech meets Music",
-        onButtonClick = {}
-    )
-}
+//@Preview(showBackground = true)
+//@Composable
+//fun HomeScreenPreview() {
+//    HomeScreen(
+//        titleText = "Tech meets Music",
+//        onButtonClick = {}
+//    )
+//}
+//
+//@Preview(showBackground = true)
+//@Composable
+//fun SearchScreenPreview() {
+//    SearchScreen()
+//}
+//
+//@Preview(showBackground = true)
+//@Composable
+//fun SyncScreenPreview() {
+//    SyncScreen()
+//}
+
+//@Preview(showBackground = true)
+//@Composable
+//fun ProfileScreenPreview() {
+//    val profileNavController = rememberNavController()
+//    ProfileScreen(navController = profileNavController)
+//}
 
 @Preview(showBackground = true)
 @Composable
-fun SearchScreenPreview() {
-    SearchScreen()
-}
-
-@Preview(showBackground = true)
-@Composable
-fun ProfileScreenPreview() {
-    ProfileScreen()
-}
-
-@Preview(showBackground = true)
-@Composable
-fun LibraryScreenPreview() {
-    LibraryScreen()
+fun Playlist1Preview() {
+    profilePlaylist1()
 }
 
