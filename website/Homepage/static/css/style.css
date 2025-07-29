@@ -127,3 +127,27 @@ a:hover {
     display: block;
 }
 
+.pdf-widget {
+  width: 600px;            /* subject to change */
+  height: 800px;
+  border: 1px solid #ccc;
+  margin: 1rem auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.pdf-widget canvas {
+  flex: 1;                /* stretch to fill the widget’s height */
+  width: 100%;
+}
+
+.pdf-controls {
+  text-align: center;
+  padding: 0.5rem;
+  background: #fafafa;
+  border-bottom: 1px solid #ddd;
+}
+
+.pdf-controls button {
+  margin: 0 0.5rem;
+}

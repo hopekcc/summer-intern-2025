@@ -1,8 +1,12 @@
 
 import os
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, send_from_directory, abort
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
+
+PDF_FOLDER = os.path.join(app.root_path, 'static', 'pdfs')
+app.config['PDF_FOLDER'] = PDF_FOLDER
 
 @app.route('/')
 def home():
@@ -15,6 +19,20 @@ def preview():
         chordpro_text = request.form.get('chordpro_text')
         return render_template('preview.html', content=chordpro_text)
     return render_template('preview.html', content=None)
+
+# CHORDPRO PDF VIEWER
+@app.route('/view/<path:filename>')
+def view_pdf(filename):
+    filename = secure_filename(filename)
+    file_path = os.path.join(app.config['PDF_FOLDER'], filename)
+    if not os.path.exists(file_path):
+        abort(404)
+    return render_template('view.html', filename=filename)
+
+# RETRIEVE PDF METHOD
+@app.route('/pdfs/<path:filename>')
+def serve_pdf(filename):
+    return send_from_directory(app.config['PDF_FOLDER'], filename)
 
 # ARTIST SEARCH METHOD
 @app.route('/search_artist', methods=['GET'])
