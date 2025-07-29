@@ -1,0 +1,26 @@
+
+{% extends 'base.html' %}
+
+{% block title %}Preview Rendering{% endblock %}
+
+{% block content %}
+<div class="welcome-section">
+    <div class="welcome-text">
+        <h1>ChordPro Preview</h1>
+        <form method="post">
+            <textarea name="chordpro_text" rows="10" cols="60" placeholder="Paste your ChordPro content here..."></textarea>
+            <br><br>
+            <button type="submit" class="btn-primary">Render Preview</button>
+        </form>
+    </div>
+</div>
+
+{% if content %}
+    <div class="welcome-section">
+        <div class="welcome-text">
+            <h2>Preview Output:</h2>
+            <pre style="background-color:#f0f0f0; padding:1rem; border-radius:5px;">{{ content }}</pre>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}
