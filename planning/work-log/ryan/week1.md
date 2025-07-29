@@ -46,5 +46,3 @@
 - Questions about proper formatting for ChordPro songs
 - Where should I source songs in the future?
 - Is there any other useful Git shortcuts?
-
-
