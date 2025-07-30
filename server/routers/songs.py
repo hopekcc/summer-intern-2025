@@ -44,16 +44,24 @@ def specficSong(song_id: str, metadata_path: str = Depends(get_metadata_path)):
 # PDF conversion helpers
 def convert_chordpro_to_pdf(input_file: str, output_file: str):
     """Converts a ChordPro file to PDF, checking for the 'chordpro' command first."""
-    if shutil.which("chordpro") is None:
+    
+    # Prioritize CHORDPRO_PATH from .env, but fall back to checking system PATH
+    chordpro_cmd = os.getenv("CHORDPRO_PATH")
+    
+    # If the .env path isn't valid, check the system PATH
+    if not chordpro_cmd or not os.path.exists(chordpro_cmd):
+        chordpro_cmd = shutil.which("chordpro")
+
+    if not chordpro_cmd:
         raise HTTPException(
             status_code=500,
-            detail="ChordPro command not found. Please install it to generate PDFs."
+            detail="ChordPro command not found. Please install it or set CHORDPRO_PATH in your .env file."
         )
     
     print("Running conversion:", input_file, "→", output_file)
     try:
         subprocess.run(
-            ["chordpro", "--output", output_file, input_file],
+            [chordpro_cmd, "--output", output_file, input_file],
             check=True,
             capture_output=True,
             text=True,
