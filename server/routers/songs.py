@@ -43,32 +43,48 @@ def specficSong(song_id: str, metadata_path: str = Depends(get_metadata_path)):
 
 # PDF conversion helpers
 def convert_chordpro_to_pdf(input_file: str, output_file: str):
-    """Converts a ChordPro file to PDF, checking for the 'chordpro' command first."""
+    """
+    Converts a ChordPro file to PDF, accommodating both system-wide installations
+    (like on Windows) and local dependency setups (like on a Linux server).
+    """
     
-    # Prioritize CHORDPRO_PATH from .env, but fall back to checking system PATH
+    # Get paths from environment variables. These are typically set for local/portable installations.
     chordpro_cmd = os.getenv("CHORDPRO_PATH")
-    
-    # If the .env path isn't valid, check the system PATH
+    perl5lib_path = os.getenv("PERL5LIB_PATH")
+
+    # If CHORDPRO_PATH isn't set or valid, search the system's PATH.
     if not chordpro_cmd or not os.path.exists(chordpro_cmd):
         chordpro_cmd = shutil.which("chordpro")
 
+    # If no chordpro command can be found, we cannot proceed.
     if not chordpro_cmd:
         raise HTTPException(
             status_code=500,
-            detail="ChordPro command not found. Please install it or set CHORDPRO_PATH in your .env file."
+            detail="ChordPro command not found. Please set CHORDPRO_PATH in .env or install it in your system PATH."
         )
-    
+
+    # Prepare the environment for the subprocess.
+    # This is crucial for local Perl-based installations that need PERL5LIB.
+    cmd_env = os.environ.copy()
+    if perl5lib_path:
+        cmd_env["PERL5LIB"] = perl5lib_path
+        
+    print(f"Using ChordPro command: {chordpro_cmd}")
     print("Running conversion:", input_file, "→", output_file)
+
     try:
         subprocess.run(
             [chordpro_cmd, "--output", output_file, input_file],
             check=True,
             capture_output=True,
             text=True,
+            env=cmd_env,  # Pass the potentially modified environment
         )
     except subprocess.CalledProcessError as e:
-        print("ChordPro conversion failed:", e.stderr)
-        raise HTTPException(status_code=500, detail="Failed to convert ChordPro file")
+        # Capture and return the specific error from the ChordPro command
+        error_detail = e.stderr.strip() if e.stderr else "An unknown error occurred."
+        print(f"ChordPro conversion failed: {error_detail}")
+        raise HTTPException(status_code=500, detail=f"Failed to convert ChordPro file: {error_detail}")
 
 def songPDFHelper(
     song_id: str,
