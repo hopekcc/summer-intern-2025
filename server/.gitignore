@@ -12,3 +12,4 @@ pdf_testing/
 security/
 room_database/
 .pytest_cache/
+/scripts/__pycache__/
