@@ -1,7 +1,8 @@
 
 import os
-from flask import Flask, render_template, request, send_from_directory, abort
+from flask import Flask, render_template, request, send_from_directory, url_for, abort
 from werkzeug.utils import secure_filename
+import re #regex
 
 app = Flask(__name__)
 
@@ -28,6 +29,12 @@ def view_pdf(filename):
     if not os.path.exists(file_path):
         abort(404)
     return render_template('view.html', filename=filename)
+
+# SIMPLIFY FOR URL
+def make_slug(title):
+    # lowercase, strip out non‑alphanumerics, smash together
+    return re.sub(r'[^a-z0-9]', '',
+                  title.lower()) + '.pdf'
 
 # RETRIEVE PDF METHOD
 @app.route('/pdfs/<path:filename>')
@@ -82,7 +89,15 @@ def search_title():
 
     if request.method == 'POST':
         keyword = request.form.get('keyword', '').strip().lower()
-        results = [song for song in all_songs if keyword in song.lower()]
+        for song in all_songs:
+            if keyword in song.lower():
+                filename = make_slug(song)
+                # builds "/view/jinglebells.pdf", etc.
+                pdf_url = url_for('view_pdf', filename=filename)
+                results.append({
+                    'title': song,
+                    'pdf_url': pdf_url
+                })
 
     return render_template('search_title.html', keyword=keyword, results=results)
 

@@ -15,11 +15,15 @@
         {% if keyword %}
             <h2>Results for "{{ keyword }}"</h2>
             <ul>
-                {% for song in results %}
-                    <li>{{ song }}</li>
-                {% else %}
-                    <li>No songs found.</li>
-                {% endfor %}
+            {% for song in results %}
+                <li>
+                <a href="{{ song.pdf_url }}" target="_blank">
+                    {{ song.title }}
+                </a>
+                </li>
+            {% else %}
+                <li>No songs found.</li>
+            {% endfor %}
             </ul>
         {% endif %}
     </div>
