@@ -51,13 +51,14 @@ class TestSongEndpoints:
         """Test getting a specific song by ID"""
         mock_verify_token.return_value = {"uid": "test_user", "email": "test@example.com"}
         
-        # Use real test database files - no mocking needed
         response = self.client.get("/songs/0001", headers=self.auth_headers)
                 
         assert response.status_code == 200
         data = response.json()
-        assert data["song_id"] == "0001"
-        assert "content" in data
+        assert data["id"] == "0001"
+        assert "title" in data
+        assert data["title"] == "(Let Me Be Your) Teddy Bear - Elvis Presley"
+        assert "content" not in data # Ensure full content is not returned
 
     @patch('main.auth.verify_id_token')
     def test_get_specific_song_not_found(self, mock_verify_token):

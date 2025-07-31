@@ -190,4 +190,18 @@ def delete_room(room_id: str):
         room = session.exec(select(Room).where(Room.room_id == room_id)).first()
         if room:
             session.delete(room)
-            session.commit() 
+            session.commit()
+
+# ============================================================================
+# NON-DATABASE MODELS (for request/response validation)
+# ============================================================================
+
+from pydantic import BaseModel
+
+class SongMetadata(BaseModel):
+    """Pydantic model for song metadata responses."""
+    id: str
+    title: str
+    artist: Optional[str] = None
+    # Add any other metadata fields you have, e.g., genre, year
+ 

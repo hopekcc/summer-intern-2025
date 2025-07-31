@@ -12,6 +12,7 @@ from server.dependencies import (
     get_metadata_path, 
     get_songs_pdf_dir
 )
+from server.scripts.database_models import SongMetadata
 router = APIRouter()
 
 # ============================================================================
@@ -120,21 +121,20 @@ def get_songs_list(
 ):
     return songs_data
 
-@router.get("/{song_id}")
+@router.get("/{song_id}", response_model=SongMetadata)
 def get_specific_song(
     song_id: str, 
-    songs_dir: str = Depends(get_songs_dir),
-    metadata_path: str = Depends(get_metadata_path),
+    songs_data: dict = Depends(listOfSongs),
     current_user=Depends(verify_firebase_token)
 ):
-    song_filename = specficSong(song_id, metadata_path)
-    song_path = os.path.join(songs_dir, song_filename)
-    if not os.path.exists(song_path):
-        raise HTTPException(status_code=404, detail="Song file not found")
+    if song_id not in songs_data:
+        raise HTTPException(status_code=404, detail="Song not found")
     
-    with open(song_path, "r") as f:
-        content = f.read()
-    return {"song_id": song_id, "content": content}
+    title = songs_data[song_id]
+    
+    # Here you could expand to fetch more details from another source if needed
+    # For now, we'll just return the ID and title.
+    return SongMetadata(id=song_id, title=title)
 
 @router.get("/{song_id}/pdf")
 def get_song_pdf(
