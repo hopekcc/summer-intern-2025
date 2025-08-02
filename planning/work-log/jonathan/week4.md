@@ -1,40 +1,35 @@
 # HopeKCC Summer Intern – Weekly Work Log
 
-### Name: [Your Name]
-### Track: [Server / Website / Mobile]
-### Week: [e.g., Week 1]
-### Date: [e.g., July 1 ]
-### Hour: [e.g., 3.5 hours ]
+### Name: Jonathan Yu
+### Track: Mobile
+### Week: Week 4
+### Date: 7/29
+### Hour: 16
 
 ---
 
 ## ✅ What's Done
-- [Short bullet points of completed tasks]
-- [Include demo links or PR links if available]
-- e.g., Implemented login flow with Firebase Auth  
-- e.g., Created unit tests for ChordPro conversion  
-- e.g., Reviewed two PR: [link to PR]
-- e.g., Submitted 2 songs: [name of songs or git URL]
+- Replaced the nav bar at the bottom with "sync" instead of library
+- Updated the home screen by updating title text
+- Added recently played songs UI section [https://youtube.com/shorts/DXb6KZfYhFY?feature=share](url)
+- Created a song class to pass through functions such as the recently played section
+- Looked into Firebase authentication implementation
+- Added 5 songs: Always, Loose, Superpowers, Lost, and Best Part h[ttps://github.com/hopekcc/song-db-chordpro/commit/8d21a33840577fd957e3f0595482dd11cdd25678](url)
 
 ---
 
 ## 🔄 What's Active (with ETA)
-- [Current in-progress tasks and when you expect them to be done]
-- e.g., Styling the song editor page – ETA: July 9  
-- e.g., Sync module between host/client – ETA: Week 2  
+- Adding search bar to search screen (by week 5)
+- fixing bug with Home Screen (by week 5)
+- looking at firebase authentication
 
 ---
 
 ## ⏭️ What's Next
-- [What you'll start next]
-- e.g., Add mobile gesture control for zoom  
-- e.g., Refactor database schema for playlist handling  
-
+- talk to Server team for database, get calls, and login system
+- add songs into app, as well as preview rendering system
 ---
 
 ## 🛑 Blockers or Questions
-- [Anything you're stuck on or need help with]
-- e.g., ChordPro parser throws error on capo tag – need help debugging  
-- e.g., Not sure how to serve weekly/stable site branches on FastAPI
-
+- None other than the song get calls and formatting from the server team
 
