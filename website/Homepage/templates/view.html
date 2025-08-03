@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}View {{ filename }}{% endblock %}
+
+{% block content %}
+  <div class="pdf-widget">
+    <div class="pdf-controls">
+      <button id="prev">Prev</button>
+      Page <span id="page_num">–</span> of <span id="page_count">–</span>
+      <button id="next">Next</button>
+    </div>
+    <canvas id="pdf-render"></canvas>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  // 1. Import the PDF.js module:
+  import * as pdfjsLib from "{{ url_for('static', filename='pdfjs/build/pdf.mjs') }}";
+
+  // 2. Tell it where to find the worker:
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "{{ url_for('static', filename='pdfjs/build/pdf.worker.mjs') }}";
+
+  // 3. Your existing page‐rendering logic goes here:
+  const url = "{{ url_for('serve_pdf', filename=filename) }}";
+  let pdfDoc = null, pageNum = 1, pageIsRendering = false, pageNumPending = null;
+  const scale = 1.5,
+        canvas = document.getElementById('pdf-render'),
+        ctx    = canvas.getContext('2d');
+
+  function renderPage(num) {
+    pageIsRendering = true;
+    pdfDoc.getPage(num).then(page => {
+      const vp = page.getViewport({ scale });
+      canvas.width  = vp.width;
+      canvas.height = vp.height;
+      page.render({ canvasContext: ctx, viewport: vp }).promise.then(() => {
+        pageIsRendering = false;
+        if (pageNumPending !== null) {
+          renderPage(pageNumPending);
+          pageNumPending = null;
+        }
+      });
+      document.getElementById('page_num').textContent = num;
+    });
+  }
+
+  function queueRender(num) {
+    pageIsRendering ? pageNumPending = num : renderPage(num);
+  }
+
+  document.getElementById('prev').addEventListener('click', () => {
+    if (pageNum > 1) queueRender(--pageNum);
+  });
+  document.getElementById('next').addEventListener('click', () => {
+    if (pageNum < pdfDoc.numPages) queueRender(++pageNum);
+  });
+
+  pdfjsLib.getDocument(url).promise.then(doc => {
+    pdfDoc = doc;
+    document.getElementById('page_count').textContent = doc.numPages;
+    renderPage(pageNum);
+  }).catch(err => alert('Error loading PDF: ' + err.message));
+</script>
+{% endblock %}
