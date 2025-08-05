@@ -1,31 +1,80 @@
 
-{% extends 'base.html' %}
+{% extends "base.html" %}
 
-{% block title %}Search Song By Title{% endblock %}
+{% block title %}Search Songs{% endblock %}
 
 {% block content %}
-<div class="welcome-section">
-    <div class="welcome-text">
-        <h1>Search Song By Title</h1>
-        <form method="post">
-            <input type="text" name="keyword" placeholder="Enter song title" value="{{ keyword }}">
-            <button type="submit" class="btn-primary">Search</button>
-        </form>
-
-        {% if keyword %}
-            <h2>Results for "{{ keyword }}"</h2>
-            <ul>
-            {% for song in results %}
-                <li>
-                <a href="{{ song.pdf_url }}" target="_blank">
-                    {{ song.title }}
-                </a>
-                </li>
-            {% else %}
-                <li>No songs found.</li>
-            {% endfor %}
-            </ul>
-        {% endif %}
-    </div>
+<div class="song-container" style="padding: 2rem;">
+  <h2>🔍 Search Songs</h2>
+  <input type="text" id="search-input" placeholder="Type a keyword..." style="padding: 0.5rem; width: 60%;">
+  <div id="search-results" style="margin-top: 1rem;"></div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
+  import {
+    onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const input = document.getElementById("search-input");
+    const results = document.getElementById("search-results");
+
+    if (!input || !results) {
+      console.error("❌ Element(s) not found in DOM. Make sure #search-input and #search-results exist.");
+      return;
+    }
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        alert("Please log in first.");
+        window.location.href = "/login";
+        return;
+      }
+
+      const token = await user.getIdToken();
+
+      input.addEventListener("input", async () => {
+        const query = input.value.trim();
+
+        if (query.length === 0) {
+          results.innerHTML = "";
+          return;
+        }
+
+        try {
+          const res = await fetch(`http://34.125.143.141:8000/songs/search/${encodeURIComponent(query)}`, {
+            headers: {
+              Authorization: "Bearer " + token
+            }
+          });
+
+          if (!res.ok) {
+            results.innerHTML = "<p style='color:red;'>Failed to fetch results</p>";
+            return;
+          }
+
+          const songs = await res.json();
+
+          if (songs.length === 0) {
+            results.innerHTML = "<p>No matching songs found.</p>";
+            return;
+          }
+
+          results.innerHTML = songs.map(song => `
+            <div class="song-card">
+              <p><strong>${song.title}</strong></p>
+              <a href="/songs/${song.id}/view">View</a>
+            </div>
+          `).join("");
+        } catch (err) {
+          console.error("Fetch error:", err);
+          results.innerHTML = "<p style='color:red;'>Error occurred while fetching.</p>";
+        }
+      });
+    });
+  });
+</script>
 {% endblock %}
