@@ -17,7 +17,6 @@ fun BottomNavigationBar(
     onLogout: () -> Unit
 ) {
     val items = listOf("home", "search", "sync", "profile")
-    var showLogoutDialog by remember { mutableStateOf(false) }
 
     NavigationBar {
         items.forEach { screen ->
@@ -31,11 +30,7 @@ fun BottomNavigationBar(
             NavigationBarItem(
                 selected = false,
                 onClick = {
-                    if (screen == "profile") {
-                        showLogoutDialog = true
-                    } else {
-                        navController.navigate(screen)
-                    }
+                    navController.navigate(screen)
                 },
                 icon = {
                     Icon(
@@ -57,31 +52,5 @@ fun BottomNavigationBar(
                 }
             )
         }
-    }
-
-    // Logout Confirmation Dialog
-    if (showLogoutDialog) {
-        AlertDialog(
-            onDismissRequest = { showLogoutDialog = false },
-            title = { Text("Logout") },
-            text = { Text("Are you sure you want to logout?") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showLogoutDialog = false
-                        onLogout()
-                    }
-                ) {
-                    Text("Yes")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showLogoutDialog = false }
-                ) {
-                    Text("No")
-                }
-            }
-        )
     }
 }

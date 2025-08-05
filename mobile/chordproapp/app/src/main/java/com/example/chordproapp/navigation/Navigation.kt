@@ -1,3 +1,6 @@
+// Add this to your AppNavigation.kt file
+// You'll need to modify your existing AppNavigation composable to include the profile route
+
 package com.example.chordproapp.navigation
 
 import androidx.compose.runtime.Composable
@@ -15,6 +18,7 @@ fun AppNavigation(
     navController: NavHostController,
     titleText: String,
     setTitleText: (String) -> Unit,
+    onLogout: () -> Unit, // ADD THIS PARAMETER
     modifier: Modifier = Modifier
 ) {
     NavHost(
@@ -28,7 +32,11 @@ fun AppNavigation(
             )
         }
         composable("search") { SearchScreen() }
-        composable("profile") { ProfileScreen() }
+        composable("profile") {
+            ProfileScreen(
+                onLogout = onLogout // ADD THIS PARAMETER
+            )
+        }
         composable("sync") { SyncScreen() }
     }
 }

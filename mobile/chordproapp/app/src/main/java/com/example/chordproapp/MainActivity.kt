@@ -26,6 +26,8 @@ class MainActivity : ComponentActivity() {
         FirebaseApp.initializeApp(this)
         auth = FirebaseAuth.getInstance()
 
+        // auth.signOut() // logout to test
+
         setContent {
             var username by remember { mutableStateOf("Hey, User! 👋🏻") }
             var isLoggedIn by remember { mutableStateOf(false) }
@@ -58,6 +60,11 @@ class MainActivity : ComponentActivity() {
                         navController = navController,
                         titleText = username,
                         setTitleText = { username = it },
+                        onLogout = {
+                            auth.signOut()
+                            isLoggedIn = false
+                            username = "Hey, User! 👋🏻"
+                        },
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
