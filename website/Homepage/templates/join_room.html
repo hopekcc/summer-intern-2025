@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block title %}Join Room{% endblock %}
+
+{% block content %}
+  <h2>Join an Existing Room</h2>
+  <form id="join-form">
+    <input
+      type="text"
+      id="room-id"
+      placeholder="Enter Room ID"
+      required
+      style="padding:0.5rem; margin-right:0.5rem;"
+    />
+    <button type="submit">Join Room</button>
+  </form>
+  <p id="join-result" style="margin-top:1rem;"></p>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+
+  onAuthStateChanged(auth, user => {
+    const resultEl = document.getElementById('join-result');
+    if (!user) {
+      resultEl.textContent = 'Please sign in first.';
+      return;
+    }
+    document.getElementById('join-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      resultEl.textContent = '';
+      const roomId = document.getElementById('room-id').value.trim();
+      const token = await user.getIdToken(/* forceRefresh */ true);
+
+      const res = await fetch(
+        `http://34.125.143.141:8000/rooms/join/${encodeURIComponent(roomId)}`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      if (!res.ok) {
+        resultEl.textContent = 'Error: ' + await res.text();
+        return;
+      }
+      // On success, go to the room page
+      window.location.href = `/rooms/${roomId}`;
+    });
+  });
+</script>
+{% endblock %}
