@@ -5,6 +5,18 @@
     <meta charset="UTF-8">
     <title>{% block title %}HOPEKCC Chord Pro Tool{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+  <script type="module">
+    import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
+    import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+
+    window.myAuth = auth;
+    onAuthStateChanged(auth, user => {
+      // `user` is null if signed out
+      window.currentUser = user;
+      document.dispatchEvent(new Event('firebase-ready'));
+    });
+  </script>
     {% block head %}{% endblock %}
   </head>
 <body>
