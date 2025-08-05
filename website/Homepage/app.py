@@ -100,7 +100,10 @@ def search_title():
                 })
 
     return render_template('search_title.html', keyword=keyword, results=results)
-
+# LOGIN PAGE
+@app.route('/login')
+def login_page():
+    return render_template('login.html')
 
 # GCP Hosting
 if __name__ == '__main__':
