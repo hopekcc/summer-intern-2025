@@ -121,6 +121,13 @@ def room_page(room_id):
     # renders the live-room UI (templates/room.html)
     return render_template('room.html', room_id=room_id)
 
+
+# SONG LISTS
+@app.route("/songs")
+def song_list():
+    return render_template("songs.html")
+
+
 # GCP Hosting
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8080))
