@@ -41,16 +41,16 @@ android {
 }
 
 dependencies {
-
-    // Import the Firebase BoM
+    // Firebase BOM
     implementation(platform("com.google.firebase:firebase-bom:34.0.0"))
 
-    // TODO: Add the dependencies for Firebase products you want to use
-    // When using the BoM, don't specify versions in Firebase dependencies
-    // https://firebase.google.com/docs/android/setup#available-libraries
-    //implementation("com.google.firebase:firebase-auth-ktx")
-    //implementation("com.firebaseui:firebase-ui-auth:8.0.2")
+    // DON'T ADD firebase-auth-ktx - use your existing one instead
+    // implementation("com.google.firebase:firebase-auth-ktx") // REMOVE THIS LINE
 
+    // Material Icons Extended - ADD ONLY THIS
+    implementation("androidx.compose.material:material-icons-extended")
+
+    // Your existing dependencies (keep all of these)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -62,7 +62,8 @@ dependencies {
     implementation(libs.jsoup)
     implementation(libs.androidx.navigation.runtime.android)
     implementation(libs.androidx.navigation.compose.android)
-    implementation(libs.firebase.auth)
+    implementation(libs.firebase.auth) // KEEP THIS - your existing Firebase Auth
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -70,5 +71,4 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-
 }
