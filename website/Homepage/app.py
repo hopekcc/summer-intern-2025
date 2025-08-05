@@ -100,10 +100,26 @@ def search_title():
                 })
 
     return render_template('search_title.html', keyword=keyword, results=results)
+# CREATE ROOM
+@app.route('/rooms/create')
+def create_room():
+    return render_template('create_room.html')
+
+# JOIN ROOM
+@app.route('/rooms/join')
+def join_room():
+    return render_template('join_room.html')
+
 # LOGIN PAGE
 @app.route('/login')
 def login_page():
     return render_template('login.html')
+
+# TEST SUCCESS FROM ROOM
+@app.route('/rooms/<room_id>')
+def room_page(room_id):
+    # renders the live-room UI (templates/room.html)
+    return render_template('room.html', room_id=room_id)
 
 # GCP Hosting
 if __name__ == '__main__':
