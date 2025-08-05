@@ -1,10 +1,208 @@
+{# templates/room.html #}
 {% extends 'base.html' %}
-
-{% block title %}Success{% endblock %}
+{% block title %}Room {{ room_id }}{% endblock %}
 
 {% block content %}
-  <div style="text-align:center; margin-top:2rem;">
-    <h1>Success 🎉</h1>
-    <p>Room created successfully.</p>
+  <h2>Room {{ room_id }}</h2>
+  <div id="status" style="margin-bottom:1rem;">Loading…</div>
+
+  <div id="host-controls" style="display:none; margin-bottom:1rem;">
+    <label>Pick song:
+      <select id="song-select"></select>
+    </label>
+    <button id="btn-set-song">Set Song</button>
   </div>
+
+  <div id="pager" style="display:none; margin-bottom:1rem;">
+    <button id="prev">Prev</button>
+    Page <span id="current-page">1</span> of <span id="total-pages">1</span>
+    <button id="next">Next</button>
+  </div>
+
+  <div id="sheet-viewer">
+    <img id="page-img" src="" alt="Sheet page" style="max-width:100%;" />
+  </div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
+  import { onAuthStateChanged } from 
+    "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+
+  const roomId       = "{{ room_id }}";
+  const API_HOST     = '34.125.143.141:8000';        // <-- your FastAPI host
+  const statusEl     = document.getElementById('status');
+  const hostControls = document.getElementById('host-controls');
+  const songSelect   = document.getElementById('song-select');
+  const btnSetSong   = document.getElementById('btn-set-song');
+  const pager        = document.getElementById('pager');
+  const prevBtn      = document.getElementById('prev');
+  const nextBtn      = document.getElementById('next');
+  const pageNumEl    = document.getElementById('current-page');
+  const pageTotEl    = document.getElementById('total-pages');
+  const pageImg      = document.getElementById('page-img');
+
+  let ws, token, myUid;
+
+  onAuthStateChanged(auth, async user => {
+    if (!user) {
+      return window.location.href = '/login';
+    }
+    myUid = user.uid;
+    token = await user.getIdToken(true);
+    console.log("✅ Authenticated as", myUid);
+
+    // 0) Join the room
+    console.log("→ POST /rooms/join/" + roomId);
+    const jr = await fetch(
+      `http://${API_HOST}/rooms/join/${roomId}`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token }
+      }
+    );
+    console.log("← join status", jr.status);
+    if (!jr.ok) {
+      statusEl.textContent = 'Error joining room: ' + await jr.text();
+      return;
+    }
+
+    // 1) Get room metadata (host, participants)
+    await loadRoomInfo();
+
+    // 2) Load current song/page state & song list
+    await Promise.all([loadRoomState(), loadSongList()]);
+
+    // 3) Open WebSocket
+    connectWebSocket();
+  });
+
+  async function loadRoomInfo() {
+    console.log("→ GET /rooms/" + roomId);
+    const res  = await fetch(
+      `http://${API_HOST}/rooms/${roomId}`, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      }
+    );
+    console.log("← room info status", res.status);
+    const info = await res.json();
+    console.log("🔍 Room info payload:", info);
+    // Try both possible key names:
+    const hostId = info.host ?? info.host_id ?? info.hostUid;
+    console.log("‼︎ detected hostId =", hostId);
+    statusEl.textContent = hostId
+      ? `Host: ${hostId}`
+      : `⚠️ Host undefined (keys: ${Object.keys(info).join(', ')})`;
+
+    if (hostId === myUid) {
+      hostControls.style.display = 'block';
+    }
+  }
+
+  async function loadRoomState() {
+    console.log("→ GET /rooms/" + roomId + "/current");
+    const res = await fetch(
+      `http://${API_HOST}/rooms/${roomId}/current`, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      }
+    );
+    console.log("← state status", res.status);
+    const state = await res.json();
+    console.log("🔍 Room state payload:", state);
+    if (state.current_song_id) {
+      handleSongUpdate(state.pages, state.pages.length);
+      handlePageUpdate(state.current_page);
+    }
+  }
+
+  async function loadSongList() {
+    console.log("→ GET /songs/list");
+    const res   = await fetch(`http://${API_HOST}/songs/list`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    console.log("← songs list status", res.status);
+    const songs = await res.json();
+    songSelect.innerHTML = songs
+      .map(s => `<option value="${s.id}">${s.title}</option>`)
+      .join('');
+  }
+
+  function connectWebSocket() {
+    const wsProtocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    const wsUrl      = `${wsProtocol}${API_HOST}/ws/${roomId}`;
+    console.log("🕸 Connecting WS →", wsUrl);
+
+    ws = new WebSocket(wsUrl);
+    ws.addEventListener('open', () => {
+      console.log("✅ WS open");
+      statusEl.textContent = 'Connected (WS)';
+      // send the token as first message
+      ws.send(JSON.stringify({ token }));
+    });
+    ws.addEventListener('message', e => {
+      console.log("← WS message:", e.data);
+      const msg = JSON.parse(e.data);
+      switch (msg.type) {
+        case 'song_update':
+          handleSongUpdate(msg.pages, msg.pages.length); break;
+        case 'page_update':
+          handlePageUpdate(msg.page); break;
+        case 'image_data':
+          pageImg.src = msg.image; break;
+        case 'error':
+          statusEl.textContent = 'Error: ' + msg.detail; break;
+      }
+    });
+    ws.addEventListener('close', () => {
+      console.log("⚠️ WS closed, retrying in 2s");
+      statusEl.textContent = 'Disconnected (WS). Reconnecting…';
+      setTimeout(connectWebSocket, 2000);
+    });
+    ws.addEventListener('error', e => {
+      console.error("WS error:", e);
+    });
+  }
+
+  function handleSongUpdate(pages, count) {
+    pageTotEl.textContent = count;
+    pageNumEl.textContent = '1';
+    pageImg.src           = pages[0];
+    pager.style.display   = 'block';
+  }
+
+  function handlePageUpdate(page) {
+    pageNumEl.textContent = page;
+    ws.send(JSON.stringify({ type:'get_image', page }));
+  }
+
+  btnSetSong.addEventListener('click', async () => {
+    console.log("→ POST /rooms/" + roomId + "/song");
+    await fetch(`http://${API_HOST}/rooms/${roomId}/song`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type':  'application/json'
+      },
+      body: JSON.stringify({ song_id: songSelect.value })
+    });
+  });
+
+  prevBtn.addEventListener('click', () => changePage(-1));
+  nextBtn.addEventListener('click', () => changePage(1));
+
+  async function changePage(delta) {
+    const curr = +pageNumEl.textContent;
+    const next = curr + delta;
+    if (next < 1 || next > +pageTotEl.textContent) return;
+    console.log(`→ POST /rooms/${roomId}/page {page: ${next}}`);
+    await fetch(`http://${API_HOST}/rooms/${roomId}/page`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type':  'application/json'
+      },
+      body: JSON.stringify({ page: next })
+    });
+  }
+</script>
 {% endblock %}
