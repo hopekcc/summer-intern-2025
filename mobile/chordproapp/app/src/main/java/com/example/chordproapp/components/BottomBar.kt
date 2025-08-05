@@ -1,8 +1,10 @@
 package com.example.chordproapp.components
 
 import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
@@ -10,8 +12,13 @@ import androidx.navigation.NavHostController
 import com.example.chordproapp.R
 
 @Composable
-fun BottomNavigationBar(navController: NavHostController) {
+fun BottomNavigationBar(
+    navController: NavHostController,
+    onLogout: () -> Unit
+) {
     val items = listOf("home", "search", "sync", "profile")
+    var showLogoutDialog by remember { mutableStateOf(false) }
+
     NavigationBar {
         items.forEach { screen ->
             val icon = when (screen) {
@@ -23,7 +30,13 @@ fun BottomNavigationBar(navController: NavHostController) {
             }
             NavigationBarItem(
                 selected = false,
-                onClick = { navController.navigate(screen) },
+                onClick = {
+                    if (screen == "profile") {
+                        showLogoutDialog = true
+                    } else {
+                        navController.navigate(screen)
+                    }
+                },
                 icon = {
                     Icon(
                         painter = painterResource(id = icon),
@@ -44,5 +57,31 @@ fun BottomNavigationBar(navController: NavHostController) {
                 }
             )
         }
+    }
+
+    // Logout Confirmation Dialog
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            title = { Text("Logout") },
+            text = { Text("Are you sure you want to logout?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLogoutDialog = false
+                        onLogout()
+                    }
+                ) {
+                    Text("Yes")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showLogoutDialog = false }
+                ) {
+                    Text("No")
+                }
+            }
+        )
     }
 }
