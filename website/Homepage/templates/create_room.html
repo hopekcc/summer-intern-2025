@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}Create Room{% endblock %}
+
+{% block content %}
+  <h2>Create a New Room</h2>
+  <button id="btn-create">Create Room</button>
+  <p id="create-result" style="margin-top:1rem;"></p>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+
+  onAuthStateChanged(auth, user => {
+    if (!user) {
+      document.getElementById('create-result').textContent = 'Please sign in first.';
+      return;
+    }
+    document.getElementById('btn-create').addEventListener('click', async () => {
+      const token = await user.getIdToken(/* forceRefresh */ true);
+      const res = await fetch('http://34.125.143.141:8000/rooms/create', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (!res.ok) {
+        document.getElementById('create-result').textContent = 'Error: ' + await res.text();
+        return;
+      }
+      const data = await res.json();        // { room_id: "ABC123" }
+      // Show link to room or redirect immediately:
+      const link = document.createElement('a');
+      link.href = `/rooms/${data.room_id}`;
+      link.textContent = `Go to Room ${data.room_id}`;
+      document.getElementById('create-result').innerHTML = '';
+      document.getElementById('create-result').appendChild(link);
+    });
+  });
+</script>
+{% endblock %}

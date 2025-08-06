@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% block title %}Login{% endblock %}
+
+{% block content %}
+  <div class="login-wrapper">
+    <div class="login-box">
+      <h2>Login</h2>
+      <div id="error-msg" class="flash" style="color:red"></div>
+
+      <!-- Turn this into a client-side form: remove method/action -->
+      <form id="login-form">
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input
+            type="email"
+            id="email"
+            placeholder="you@example.com"
+            required
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input
+            type="password"
+            id="password"
+            placeholder="enter here"
+            required
+          >
+        </div>
+
+        <button type="submit">Login</button>
+      </form>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
+  import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+
+  const form = document.getElementById('login-form');
+  const errEl = document.getElementById('error-msg');
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    errEl.textContent = '';
+
+    const email = document.getElementById('email').value;
+    const pw    = document.getElementById('password').value;
+
+    try {
+      // Sign in with Firebase
+      await signInWithEmailAndPassword(auth, email, pw);
+      // On success, redirect to your protected page
+      window.location.href = "/";
+    } catch(err) {
+      errEl.textContent = err.message;
+    }
+  });
+</script>
+{% endblock %}
