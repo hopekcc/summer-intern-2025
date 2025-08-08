@@ -12,6 +12,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.chordproapp.components.BottomNavigationBar
 import com.example.chordproapp.navigation.AppNavigation
 import com.example.chordproapp.screens.LoginScreen
+import com.example.chordproapp.ui.theme.PlaylistViewModel
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 
@@ -42,6 +43,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val playlistViewModel = remember { PlaylistViewModel() }
+
             if (isLoggedIn) {
                 // Show main app with bottom navigation
                 Scaffold(
@@ -60,6 +63,7 @@ class MainActivity : ComponentActivity() {
                         navController = navController,
                         titleText = username,
                         setTitleText = { username = it },
+                        playlistViewModel = playlistViewModel, // ✅ ADD THIS
                         onLogout = {
                             auth.signOut()
                             isLoggedIn = false
