@@ -1,0 +1,15 @@
+.venvServer/
+firebase-service-account.json
+.env
+__pycache__/
+/songs
+/songs_pdf
+/test.py
+aakash/
+logs/
+pdf_testing/
+/song_database
+security/
+room_database/
+.pytest_cache/
+/scripts/__pycache__/
