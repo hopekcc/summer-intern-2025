@@ -151,3 +151,28 @@ a:hover {
 .pdf-controls button {
   margin: 0 0.5rem;
 }
+
+.song-list {
+  padding-left: 1.2rem; /* Keep indention and save the spots*/
+}
+
+.song-list li {
+  margin-bottom: 0.5rem; /* leave space below for each songs */
+}
+
+.song-list li a {
+  color: #2b2f78;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.song-list li a:hover {
+  text-decoration: underline;
+}
+
+.result-count {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.95rem;
+  opacity: 0.9;
+}
+
