@@ -1,6 +1,5 @@
 
 {% extends "base.html" %}
-
 {% block title %}Search Songs{% endblock %}
 
 {% block content %}
@@ -14,18 +13,20 @@
 {% block scripts %}
 <script type="module">
   import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
-  import {
-    onAuthStateChanged
-  } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+
+  const escapeHtml = (s) =>
+    s.replaceAll("&","&amp;")
+     .replaceAll("<","&lt;")
+     .replaceAll(">","&gt;")
+     .replaceAll('"',"&quot;")
+     .replaceAll("'","&#39;");
 
   document.addEventListener("DOMContentLoaded", () => {
     const input = document.getElementById("search-input");
     const results = document.getElementById("search-results");
 
-    if (!input || !results) {
-      console.error("❌ Element(s) not found in DOM. Make sure #search-input and #search-results exist.");
-      return;
-    }
+    if (!input || !results) return;
 
     onAuthStateChanged(auth, async (user) => {
       if (!user) {
@@ -38,39 +39,30 @@
 
       input.addEventListener("input", async () => {
         const query = input.value.trim();
-
-        if (query.length === 0) {
-          results.innerHTML = "";
-          return;
-        }
+        if (!query) { results.innerHTML = ""; return; }
 
         try {
           const res = await fetch(`http://34.125.143.141:8000/songs/search/${encodeURIComponent(query)}`, {
-            headers: {
-              Authorization: "Bearer " + token
-            }
+            headers: { Authorization: "Bearer " + token }
           });
-
-          if (!res.ok) {
-            results.innerHTML = "<p style='color:red;'>Failed to fetch results</p>";
-            return;
-          }
+          if (!res.ok) { results.innerHTML = "<p style='color:red;'>Failed to fetch results</p>"; return; }
 
           const songs = await res.json();
+          if (songs.length === 0) { results.innerHTML = "<p>No matching songs found.</p>"; return; }
 
-          if (songs.length === 0) {
-            results.innerHTML = "<p>No matching songs found.</p>";
-            return;
-          }
-
-          results.innerHTML = songs.map(song => `
-            <div class="song-card">
-              <p><strong>${song.title}</strong></p>
-              <a href="/songs/${song.id}/view">View</a>
-            </div>
-          `).join("");
-        } catch (err) {
-          console.error("Fetch error:", err);
+          const count = songs.length;
+          results.innerHTML = `
+            <p class="result-count">Found ${count} ${count === 1 ? "song" : "songs"}.</p>
+            <ul class="song-list">
+              ${songs.map(song => `
+                <li>
+                  <a href="/songs/${song.id}/view">${escapeHtml(song.title)}</a>
+                </li>
+              `).join("")}
+            </ul>
+          `;
+        } catch (e) {
+          console.error(e);
           results.innerHTML = "<p style='color:red;'>Error occurred while fetching.</p>";
         }
       });
