@@ -1,56 +1,90 @@
 package com.example.chordproapp.components
 
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavHostController
-import com.example.chordproapp.R
+import androidx.navigation.compose.currentBackStackEntryAsState
+import com.example.chordproapp.ui.theme.NavBarBlue
 
 @Composable
 fun BottomNavigationBar(
     navController: NavHostController,
     onLogout: () -> Unit
 ) {
-    val items = listOf("home", "search", "sync", "profile")
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
 
-    NavigationBar {
-        items.forEach { screen ->
-            val icon = when (screen) {
-                "home" -> R.drawable.home_logo
-                "profile" -> R.drawable.user_icon
-                "search" -> R.drawable.search_logo
-                "sync" -> R.drawable.sync_logo
-                else -> R.drawable.home_logo
-            }
-            NavigationBarItem(
-                selected = false,
-                onClick = {
-                    navController.navigate(screen)
-                },
-                icon = {
-                    Icon(
-                        painter = painterResource(id = icon),
-                        contentDescription = screen,
-                        modifier = Modifier.size(40.dp)
-                    )
-                },
-                label = {
-                    Text(
-                        when (screen) {
-                            "home" -> "Home"
-                            "profile" -> "Profile"
-                            "search" -> "Search"
-                            "sync" -> "Sync"
-                            else -> "Menu"
-                        }
-                    )
+    NavigationBar(
+        containerColor = NavBarBlue,
+        contentColor = Color.White
+    ) {
+        // Sync Screen
+        NavigationBarItem(
+            icon = { Icon(Icons.Default.GroupAdd, contentDescription = "Sync") },
+            label = { Text("Sync") },
+            selected = currentRoute?.startsWith("sync") == true,
+            onClick = {
+                navController.navigate("sync") {
+                    popUpTo(navController.graph.startDestinationId)
+                    launchSingleTop = true
                 }
+            },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = Color.White,
+                selectedTextColor = Color.White,
+                unselectedIconColor = Color.White.copy(alpha = 0.6f),
+                unselectedTextColor = Color.White.copy(alpha = 0.6f),
+                indicatorColor = Color.White.copy(alpha = 0.2f)
             )
-        }
+        )
+
+        // Search Screen
+        NavigationBarItem(
+            icon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+            label = { Text("Search") },
+            selected = currentRoute == "search",
+            onClick = {
+                navController.navigate("search") {
+                    popUpTo(navController.graph.startDestinationId)
+                    launchSingleTop = true
+                }
+            },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = Color.White,
+                selectedTextColor = Color.White,
+                unselectedIconColor = Color.White.copy(alpha = 0.6f),
+                unselectedTextColor = Color.White.copy(alpha = 0.6f),
+                indicatorColor = Color.White.copy(alpha = 0.2f)
+            )
+        )
+
+        // Profile Screen
+        NavigationBarItem(
+            icon = { Icon(Icons.Default.Person, contentDescription = "Profile") },
+            label = { Text("Profile") },
+            selected = currentRoute?.startsWith("profile") == true ||
+                    currentRoute?.startsWith("playlist") == true ||
+                    currentRoute?.startsWith("allPlaylists") == true ||
+                    currentRoute?.startsWith("newPlaylist") == true,
+            onClick = {
+                navController.navigate("profile") {
+                    popUpTo(navController.graph.startDestinationId)
+                    launchSingleTop = true
+                }
+            },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = Color.White,
+                selectedTextColor = Color.White,
+                unselectedIconColor = Color.White.copy(alpha = 0.6f),
+                unselectedTextColor = Color.White.copy(alpha = 0.6f),
+                indicatorColor = Color.White.copy(alpha = 0.2f)
+            )
+        )
     }
 }

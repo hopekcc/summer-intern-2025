@@ -44,8 +44,8 @@ dependencies {
     // Firebase BOM
     implementation(platform("com.google.firebase:firebase-bom:34.0.0"))
 
-    // DON'T ADD firebase-auth-ktx - use your existing one instead
-    // implementation("com.google.firebase:firebase-auth-ktx") // REMOVE THIS LINE
+    // Font
+    implementation("androidx.compose.ui:ui-text-google-fonts:1.8.1")
 
     // Material Icons Extended - ADD ONLY THIS
     implementation("androidx.compose.material:material-icons-extended")
@@ -62,7 +62,8 @@ dependencies {
     implementation(libs.jsoup)
     implementation(libs.androidx.navigation.runtime.android)
     implementation(libs.androidx.navigation.compose.android)
-    implementation(libs.firebase.auth) // KEEP THIS - your existing Firebase Auth
+    implementation(libs.firebase.auth)
+    implementation(libs.androidx.tv.material) // KEEP THIS - your existing Firebase Auth
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
