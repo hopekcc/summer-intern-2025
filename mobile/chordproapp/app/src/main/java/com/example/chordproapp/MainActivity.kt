@@ -11,8 +11,9 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
 import com.example.chordproapp.components.BottomNavigationBar
 import com.example.chordproapp.navigation.AppNavigation
-import com.example.chordproapp.screens.LoginScreen
 import com.example.chordproapp.ui.theme.PlaylistViewModel
+import com.example.chordproapp.ui.theme.ChordproappTheme
+import com.example.chordproapp.screens.LoginScreen
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 
@@ -27,59 +28,58 @@ class MainActivity : ComponentActivity() {
         FirebaseApp.initializeApp(this)
         auth = FirebaseAuth.getInstance()
 
-        // auth.signOut() // logout to test
-
         setContent {
-            var username by remember { mutableStateOf("Hey, User! 👋🏻") }
-            var isLoggedIn by remember { mutableStateOf(false) }
-            val navController = rememberNavController()
+            ChordproappTheme {
+                var username by remember { mutableStateOf("Hey, User! 👋🏻") }
+                var isLoggedIn by remember { mutableStateOf(false) }
+                val navController = rememberNavController()
 
-            // Check if user is already logged in
-            LaunchedEffect(Unit) {
-                val currentUser = auth.currentUser
-                if (currentUser != null) {
-                    isLoggedIn = true
-                    username = "Hey, ${currentUser.email?.substringBefore("@") ?: "User"}! 👋🏻"
+                // Check if user is already logged in
+                LaunchedEffect(Unit) {
+                    val currentUser = auth.currentUser
+                    if (currentUser != null) {
+                        isLoggedIn = true
+                        username = "Hey, ${currentUser.email?.substringBefore("@") ?: "User"}! 👋🏻"
+                    }
                 }
-            }
 
-            val playlistViewModel = remember { PlaylistViewModel() }
+                // Create shared ViewModel for sync-related screens
+                val playlistViewModel = remember { PlaylistViewModel() }
 
-            if (isLoggedIn) {
-                // Show main app with bottom navigation
-                Scaffold(
-                    bottomBar = {
-                        BottomNavigationBar(
+                if (isLoggedIn) {
+                    Scaffold(
+                        bottomBar = {
+                            BottomNavigationBar(
+                                navController = navController,
+                                onLogout = {
+                                    auth.signOut()
+                                    isLoggedIn = false
+                                    username = "Hey, User! 👋🏻"
+                                }
+                            )
+                        }
+                    ) { innerPadding ->
+                        AppNavigation(
                             navController = navController,
+                            titleText = username,
+                            setTitleText = { username = it },
+                            playlistViewModel = playlistViewModel, // Pass to sync screens
                             onLogout = {
                                 auth.signOut()
                                 isLoggedIn = false
                                 username = "Hey, User! 👋🏻"
-                            }
+                            },
+                            modifier = Modifier.padding(innerPadding)
                         )
                     }
-                ) { innerPadding ->
-                    AppNavigation(
-                        navController = navController,
-                        titleText = username,
-                        setTitleText = { username = it },
-                        playlistViewModel = playlistViewModel, // ✅ ADD THIS
-                        onLogout = {
-                            auth.signOut()
-                            isLoggedIn = false
-                            username = "Hey, User! 👋🏻"
-                        },
-                        modifier = Modifier.padding(innerPadding)
+                } else {
+                    LoginScreen(
+                        onLoginSuccess = { email ->
+                            isLoggedIn = true
+                            username = "Hey, ${email.substringBefore("@")}! 👋🏻"
+                        }
                     )
                 }
-            } else {
-                // Show login screen
-                LoginScreen(
-                    onLoginSuccess = { email ->
-                        isLoggedIn = true
-                        username = "Hey, ${email.substringBefore("@")}! 👋🏻"
-                    }
-                )
             }
         }
     }

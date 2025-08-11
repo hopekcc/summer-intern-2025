@@ -8,6 +8,7 @@ import androidx.navigation.compose.composable
 import com.example.chordproapp.screens.HomeScreen
 import com.example.chordproapp.screens.SearchScreen
 import com.example.chordproapp.screens.SyncScreen
+import com.example.chordproapp.screens.JoinedSyncScreen
 import com.example.chordproapp.ui.theme.PlaylistViewModel
 import com.example.chordproapp.screens.AllPlaylists
 import com.example.chordproapp.screens.NewPlaylist
@@ -25,13 +26,18 @@ fun AppNavigation(
 ) {
     NavHost(
         navController = navController,
-        startDestination = "home"
+        startDestination = "sync" // Start with Sync screen
     ) {
-        composable("home") {
-            HomeScreen(titleText = titleText)
+        composable("sync") { SyncScreen(navController) }
+
+        composable("joined_sync/{roomCode}") { backStackEntry ->
+            val roomCode = backStackEntry.arguments?.getString("roomCode") ?: ""
+            JoinedSyncScreen(navController, roomCode)
         }
+
+        // Removed the HomeScreen route entirely
         composable("search") { SearchScreen() }
-        composable("sync") { SyncScreen() }
+
         composable("profile") {
             ProfileScreen(navController, playlistViewModel, onLogout)
         }
@@ -47,3 +53,4 @@ fun AppNavigation(
         }
     }
 }
+
