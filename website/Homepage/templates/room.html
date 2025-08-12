@@ -4,205 +4,221 @@
 
 {% block content %}
   <h2>Room {{ room_id }}</h2>
-  <div id="status" style="margin-bottom:1rem;">Loading…</div>
+  <div id="status" style="margin-bottom:1rem;">Connecting…</div>
 
-  <div id="host-controls" style="display:none; margin-bottom:1rem;">
-    <label>Pick song:
-      <select id="song-select"></select>
+  <!-- HOST‐ONLY: pick a song -->
+  <div id="host-controls" style="display:none; margin:1em 0;">
+    <label>
+      Pick song:
+      <select id="song-select">
+        <option>Loading songs…</option>
+      </select>
     </label>
     <button id="btn-set-song">Set Song</button>
   </div>
 
-  <div id="pager" style="display:none; margin-bottom:1rem;">
-    <button id="prev">Prev</button>
-    Page <span id="current-page">1</span> of <span id="total-pages">1</span>
-    <button id="next">Next</button>
-  </div>
-
-  <div id="sheet-viewer">
-    <img id="page-img" src="" alt="Sheet page" style="max-width:100%;" />
+  <!-- PDF.js viewer widget -->
+  <div class="pdf-widget">
+    <div class="pdf-controls">
+      <button id="prev">Prev</button>
+      Page <span id="page_num">–</span> of <span id="page_count">–</span>
+      <button id="next">Next</button>
+    </div>
+    <canvas id="pdf-render"></canvas>
   </div>
 {% endblock %}
 
 {% block scripts %}
 <script type="module">
+  // Firebase Auth
   import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
-  import { onAuthStateChanged } from 
-    "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
 
-  const roomId       = "{{ room_id }}";
-  const API_HOST     = '34.125.143.141:8000';        // <-- your FastAPI host
+  // PDF.js
+  import * as pdfjsLib from "{{ url_for('static', filename='pdfjs/build/pdf.mjs') }}";
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "{{ url_for('static', filename='pdfjs/build/pdf.worker.mjs') }}";
+
+  const API_HOST = '34.125.143.141:8000';
+  const API      = `http://${API_HOST}`;
+  const roomId = "{{ room_id }}";
+
+  // DOM refs
   const statusEl     = document.getElementById('status');
   const hostControls = document.getElementById('host-controls');
   const songSelect   = document.getElementById('song-select');
   const btnSetSong   = document.getElementById('btn-set-song');
-  const pager        = document.getElementById('pager');
   const prevBtn      = document.getElementById('prev');
   const nextBtn      = document.getElementById('next');
-  const pageNumEl    = document.getElementById('current-page');
-  const pageTotEl    = document.getElementById('total-pages');
-  const pageImg      = document.getElementById('page-img');
+  const pageNumEl    = document.getElementById('page_num');
+  const pageCountEl  = document.getElementById('page_count');
+  const canvas       = document.getElementById('pdf-render');
+  const ctx          = canvas.getContext('2d');
 
-  let ws, token, myUid;
+  let ws, token, myUid, hostId;
+  let pdfDoc = null, pageNum = 1, isRendering = false, pendingPage = null;
 
+  // 1) Authenticate, join room, load data, then open WebSocket
   onAuthStateChanged(auth, async user => {
-    if (!user) {
-      return window.location.href = '/login';
-    }
+    if (!user) return window.location.href = '/login';
     myUid = user.uid;
     token = await user.getIdToken(true);
-    console.log("✅ Authenticated as", myUid);
 
-    // 0) Join the room
-    console.log("→ POST /rooms/join/" + roomId);
-    const jr = await fetch(
-      `http://${API_HOST}/rooms/join/${roomId}`, {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + token }
-      }
-    );
-    console.log("← join status", jr.status);
-    if (!jr.ok) {
-      statusEl.textContent = 'Error joining room: ' + await jr.text();
-      return;
+    // join room
+    await fetch(`${API}/rooms/join/${roomId}`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+
+    // load song list & room info
+    await loadSongList();
+    const currentSongId = await loadRoomInfo();
+    if (currentSongId) {
+      await loadAndRenderPDF();
+      statusEl.textContent = '';
     }
 
-    // 1) Get room metadata (host, participants)
-    await loadRoomInfo();
-
-    // 2) Load current song/page state & song list
-    await Promise.all([loadRoomState(), loadSongList()]);
-
-    // 3) Open WebSocket
+    // open WebSocket
     connectWebSocket();
   });
 
-  async function loadRoomInfo() {
-    console.log("→ GET /rooms/" + roomId);
-    const res  = await fetch(
-      `http://${API_HOST}/rooms/${roomId}`, {
-        headers: { 'Authorization': 'Bearer ' + token }
-      }
-    );
-    console.log("← room info status", res.status);
-    const info = await res.json();
-    console.log("🔍 Room info payload:", info);
-    // Try both possible key names:
-    const hostId = info.host ?? info.host_id ?? info.hostUid;
-    console.log("‼︎ detected hostId =", hostId);
-    statusEl.textContent = hostId
-      ? `Host: ${hostId}`
-      : `⚠️ Host undefined (keys: ${Object.keys(info).join(', ')})`;
-
-    if (hostId === myUid) {
-      hostControls.style.display = 'block';
-    }
-  }
-
-  async function loadRoomState() {
-    console.log("→ GET /rooms/" + roomId + "/current");
-    const res = await fetch(
-      `http://${API_HOST}/rooms/${roomId}/current`, {
-        headers: { 'Authorization': 'Bearer ' + token }
-      }
-    );
-    console.log("← state status", res.status);
-    const state = await res.json();
-    console.log("🔍 Room state payload:", state);
-    if (state.current_song_id) {
-      handleSongUpdate(state.pages, state.pages.length);
-      handlePageUpdate(state.current_page);
-    }
-  }
-
+  // Fetch songs for host dropdown
   async function loadSongList() {
-    console.log("→ GET /songs/list");
-    const res   = await fetch(`http://${API_HOST}/songs/list`, {
+    const res = await fetch(`${API}/songs/list`, {
       headers: { 'Authorization': 'Bearer ' + token }
     });
-    console.log("← songs list status", res.status);
-    const songs = await res.json();
+    if (!res.ok) {
+      console.error('Failed to load songs:', res.status, await res.text());
+      return;
+    }
+    const data = await res.json();
+    const songs = Object.entries(data).map(([id, title]) => ({ id, title }));
+    if (!songs.length) {
+      songSelect.innerHTML = `<option>(no songs)</option>`;
+      return;
+    }
     songSelect.innerHTML = songs
       .map(s => `<option value="${s.id}">${s.title}</option>`)
       .join('');
   }
 
+  // Fetch room metadata to detect host and bind host action
+  async function loadRoomInfo() {
+    const res  = await fetch(`${API}/rooms/${roomId}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const info = await res.json();
+    hostId = info.host || info.host_id;
+    statusEl.textContent = `Host: ${hostId}`;
+    if (hostId === myUid) {
+      hostControls.style.display = 'block';
+      // bind Set Song click only for host
+      btnSetSong.addEventListener('click', async () => {
+        if (myUid !== hostId) return;
+        const songId = songSelect.value;
+        console.log("▶️ Host setting song:", songId);
+        const res = await fetch(`${API}/rooms/${roomId}/song`, {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ song_id: songId })
+        });
+        console.log("← /song status:", res.status, await res.text());
+        if (!res.ok) {
+          return alert("Error setting song");
+        }
+        // render immediately
+        await loadAndRenderPDF();
+        statusEl.textContent = '';
+      });
+    }
+    return info.current_song_id;
+  }
+
+  // WebSocket setup & handlers
+  // Use your FastAPI host/port for both HTTP & WS
+
   function connectWebSocket() {
-    const wsProtocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const wsUrl      = `${wsProtocol}${API_HOST}/ws/${roomId}`;
-    console.log("🕸 Connecting WS →", wsUrl);
+    const wsProto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    const wsUrl   = `${location.protocol==='https:'?'wss':'ws'}://${API_HOST}/ws/${roomId}`;
+    console.log("🔗 Connecting WebSocket to", wsUrl);
 
     ws = new WebSocket(wsUrl);
+
     ws.addEventListener('open', () => {
-      console.log("✅ WS open");
-      statusEl.textContent = 'Connected (WS)';
-      // send the token as first message
+      console.log('✅ WS open');
+      statusEl.textContent = 'Connected';
       ws.send(JSON.stringify({ token }));
     });
-    ws.addEventListener('message', e => {
-      console.log("← WS message:", e.data);
-      const msg = JSON.parse(e.data);
-      switch (msg.type) {
-        case 'song_update':
-          handleSongUpdate(msg.pages, msg.pages.length); break;
-        case 'page_update':
-          handlePageUpdate(msg.page); break;
-        case 'image_data':
-          pageImg.src = msg.image; break;
-        case 'error':
-          statusEl.textContent = 'Error: ' + msg.detail; break;
-      }
+
+    ws.addEventListener('message', ({ data }) => {
+      const msg = JSON.parse(data);
+      console.log('← WS message', msg);
+      if (msg.type === 'song_update') loadAndRenderPDF();
+      if (msg.type === 'page_update') queueRender(msg.page);
     });
+
     ws.addEventListener('close', () => {
-      console.log("⚠️ WS closed, retrying in 2s");
-      statusEl.textContent = 'Disconnected (WS). Reconnecting…';
+      console.log('⚠️ WS closed, reconnecting in 2s');
       setTimeout(connectWebSocket, 2000);
     });
+
     ws.addEventListener('error', e => {
-      console.error("WS error:", e);
+      console.error('❌ WS error', e);
     });
   }
 
-  function handleSongUpdate(pages, count) {
-    pageTotEl.textContent = count;
-    pageNumEl.textContent = '1';
-    pageImg.src           = pages[0];
-    pager.style.display   = 'block';
-  }
 
-  function handlePageUpdate(page) {
-    pageNumEl.textContent = page;
-    ws.send(JSON.stringify({ type:'get_image', page }));
-  }
-
-  btnSetSong.addEventListener('click', async () => {
-    console.log("→ POST /rooms/" + roomId + "/song");
-    await fetch(`http://${API_HOST}/rooms/${roomId}/song`, {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + token,
-        'Content-Type':  'application/json'
-      },
-      body: JSON.stringify({ song_id: songSelect.value })
+  // Load & render the room PDF via PDF.js
+  async function loadAndRenderPDF() {
+    const res = await fetch(`${API}/rooms/${roomId}/pdf`, {
+      headers: { 'Authorization': 'Bearer ' + token }
     });
+    const buf = await res.arrayBuffer();
+    pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+    pageCountEl.textContent = pdfDoc.numPages;
+    pageNum = 1;
+    renderPage(pageNum);
+  }
+
+  // PDF.js page rendering
+  function renderPage(num) {
+    isRendering = true;
+    pdfDoc.getPage(num).then(page => {
+      const viewport = page.getViewport({ scale: 1.5 });
+      canvas.width  = viewport.width;
+      canvas.height = viewport.height;
+      page.render({ canvasContext: ctx, viewport }).promise.then(() => {
+        isRendering = false;
+        if (pendingPage !== null) {
+          renderPage(pendingPage);
+          pendingPage = null;
+        }
+      });
+      pageNumEl.textContent = num;
+    });
+  }
+
+  function queueRender(num) {
+    isRendering ? (pendingPage = num) : renderPage(num);
+  }
+
+  // Prev/Next buttons broadcast page change
+  prevBtn.addEventListener('click', () => {
+    if (pageNum > 1) {
+      pageNum--;
+      ws.send(JSON.stringify({ type: 'host_page', page: pageNum }));
+      queueRender(pageNum);
+    }
   });
-
-  prevBtn.addEventListener('click', () => changePage(-1));
-  nextBtn.addEventListener('click', () => changePage(1));
-
-  async function changePage(delta) {
-    const curr = +pageNumEl.textContent;
-    const next = curr + delta;
-    if (next < 1 || next > +pageTotEl.textContent) return;
-    console.log(`→ POST /rooms/${roomId}/page {page: ${next}}`);
-    await fetch(`http://${API_HOST}/rooms/${roomId}/page`, {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + token,
-        'Content-Type':  'application/json'
-      },
-      body: JSON.stringify({ page: next })
-    });
-  }
+  nextBtn.addEventListener('click', () => {
+    if (pageNum < pdfDoc.numPages) {
+      pageNum++;
+      ws.send(JSON.stringify({ type: 'host_page', page: pageNum }));
+      queueRender(pageNum);
+    }
+  });
 </script>
 {% endblock %}

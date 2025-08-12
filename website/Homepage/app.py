@@ -6,6 +6,7 @@ import re #regex
 
 app = Flask(__name__)
 
+
 PDF_FOLDER = os.path.join(app.root_path, 'static', 'pdfs')
 app.config['PDF_FOLDER'] = PDF_FOLDER
 
