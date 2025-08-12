@@ -20,18 +20,18 @@
   </div>
 
   <div id="sheet-viewer">
-    <img id="page-img" src="" alt="Sheet page" style="max-width:100%;" />
+    <img id="page-img" alt="Sheet page" style="max-width:100%;" />
   </div>
 {% endblock %}
 
 {% block scripts %}
 <script type="module">
   import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
-  import { onAuthStateChanged } from 
-    "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
 
   const roomId       = "{{ room_id }}";
-  const API_HOST     = '34.125.143.141:8000';        // <-- your FastAPI host
+  const API_HOST     = "34.125.143.141:8000";  // host:port only
+
   const statusEl     = document.getElementById('status');
   const hostControls = document.getElementById('host-controls');
   const songSelect   = document.getElementById('song-select');
@@ -43,141 +43,164 @@
   const pageTotEl    = document.getElementById('total-pages');
   const pageImg      = document.getElementById('page-img');
 
+  // --- helpers to add ---
+function absUrl(path) {
+  if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) return path;
+  if (path.startsWith('/')) return `http://${API_HOST}${path}`;
+  return `http://${API_HOST}/${path}`;
+}
+
+// Silently trigger server-side render of pages via the PDF endpoint
+async function triggerSongRender(songId) {
+  try {
+    const res = await fetch(absUrl(`songs/${encodeURIComponent(songId)}/pdf`), {
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Accept': 'application/pdf',
+        'Cache-Control': 'no-store'
+      }
+    });
+    if (!res.ok) console.warn('PDF trigger failed:', res.status, await res.text());
+  } catch (e) {
+    console.warn('PDF trigger error:', e);
+  }
+}
+
+// Poll /rooms/{id}/current until pages exist
+async function waitForPages(timeoutMs = 15000, intervalMs = 700) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const r = await fetch(`http://${API_HOST}/rooms/${encodeURIComponent(roomId)}/current?ts=${Date.now()}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (r.ok) {
+      const state = await r.json();
+      if (state.pages && Array.isArray(state.pages) && state.pages.length) {
+        const pages = state.pages.map(absUrl);
+        handleSongUpdate(pages, pages.length);
+        handlePageUpdate(state.current_page ?? 1);
+        return true;
+      }
+    }
+    await new Promise(res => setTimeout(res, intervalMs));
+  }
+  return false;
+}
+
+
   let ws, token, myUid;
+  let pagesCache = [];
+  let pollTimer = null;
+
+  function wsOpen() { return ws && ws.readyState === WebSocket.OPEN; }
+  function startPolling() {
+    if (!pollTimer) {
+      pollTimer = setInterval(loadRoomState, 1500);
+      console.log('⏱️ polling started');
+    }
+  }
+  function stopPolling() {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+      console.log('⏱️ polling stopped');
+    }
+  }
 
   onAuthStateChanged(auth, async user => {
-    if (!user) {
-      return window.location.href = '/login';
-    }
+    if (!user) return (window.location.href = '/login');
     myUid = user.uid;
-    token = await user.getIdToken(true);
-    console.log("✅ Authenticated as", myUid);
+    token = await user.getIdToken(true); // fresh token
 
-    // 0) Join the room
-    console.log("→ POST /rooms/join/" + roomId);
-    const jr = await fetch(
-      `http://${API_HOST}/rooms/join/${roomId}`, {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + token }
-      }
-    );
-    console.log("← join status", jr.status);
+    // join room
+    const jr = await fetch(`http://${API_HOST}/rooms/join/${encodeURIComponent(roomId)}`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
     if (!jr.ok) {
       statusEl.textContent = 'Error joining room: ' + await jr.text();
       return;
     }
 
-    // 1) Get room metadata (host, participants)
     await loadRoomInfo();
-
-    // 2) Load current song/page state & song list
     await Promise.all([loadRoomState(), loadSongList()]);
 
-    // 3) Open WebSocket
+    // try realtime; poll as fallback
     connectWebSocket();
+    startPolling();
   });
 
   async function loadRoomInfo() {
-    console.log("→ GET /rooms/" + roomId);
-    const res  = await fetch(
-      `http://${API_HOST}/rooms/${roomId}`, {
-        headers: { 'Authorization': 'Bearer ' + token }
-      }
-    );
-    console.log("← room info status", res.status);
+    const res = await fetch(`http://${API_HOST}/rooms/${encodeURIComponent(roomId)}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) return;
     const info = await res.json();
-    console.log("🔍 Room info payload:", info);
-    // Try both possible key names:
     const hostId = info.host ?? info.host_id ?? info.hostUid;
-    console.log("‼︎ detected hostId =", hostId);
-    statusEl.textContent = hostId
-      ? `Host: ${hostId}`
-      : `⚠️ Host undefined (keys: ${Object.keys(info).join(', ')})`;
-
-    if (hostId === myUid) {
-      hostControls.style.display = 'block';
-    }
+    statusEl.textContent = hostId ? `Host: ${hostId}` : 'No host';
+    if (hostId === myUid) hostControls.style.display = 'block';
   }
 
   async function loadRoomState() {
-    console.log("→ GET /rooms/" + roomId + "/current");
-    const res = await fetch(
-      `http://${API_HOST}/rooms/${roomId}/current`, {
-        headers: { 'Authorization': 'Bearer ' + token }
-      }
-    );
-    console.log("← state status", res.status);
+    const res = await fetch(`http://${API_HOST}/rooms/${encodeURIComponent(roomId)}/current?ts=${Date.now()}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) return;
     const state = await res.json();
-    console.log("🔍 Room state payload:", state);
-    if (state.current_song_id) {
+    if (state.pages && Array.isArray(state.pages) && state.pages.length) {
       handleSongUpdate(state.pages, state.pages.length);
-      handlePageUpdate(state.current_page);
+      handlePageUpdate(state.current_page ?? 1);
     }
   }
 
   async function loadSongList() {
-    console.log("→ GET /songs/list");
-    const res   = await fetch(`http://${API_HOST}/songs/list`, {
+    const res = await fetch(`http://${API_HOST}/songs/list`, {
       headers: { 'Authorization': 'Bearer ' + token }
     });
-    console.log("← songs list status", res.status);
-    const songs = await res.json();
-    songSelect.innerHTML = songs
-      .map(s => `<option value="${s.id}">${s.title}</option>`)
-      .join('');
-  }
+    if (!res.ok) {
+      songSelect.replaceChildren();
+      statusEl.textContent = 'Error loading songs: ' + await res.text();
+      return;
+    }
+    const payload = await res.json(); // { "0001": "Jailhouse Rock", ... }
 
-  function connectWebSocket() {
-    const wsProtocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const wsUrl      = `${wsProtocol}${API_HOST}/ws/${roomId}`;
-    console.log("🕸 Connecting WS →", wsUrl);
+    const frag = document.createDocumentFragment();
+    const ph = document.createElement('option');
+    ph.value = '';
+    ph.textContent = '— Select a song —';
+    frag.appendChild(ph);
 
-    ws = new WebSocket(wsUrl);
-    ws.addEventListener('open', () => {
-      console.log("✅ WS open");
-      statusEl.textContent = 'Connected (WS)';
-      // send the token as first message
-      ws.send(JSON.stringify({ token }));
-    });
-    ws.addEventListener('message', e => {
-      console.log("← WS message:", e.data);
-      const msg = JSON.parse(e.data);
-      switch (msg.type) {
-        case 'song_update':
-          handleSongUpdate(msg.pages, msg.pages.length); break;
-        case 'page_update':
-          handlePageUpdate(msg.page); break;
-        case 'image_data':
-          pageImg.src = msg.image; break;
-        case 'error':
-          statusEl.textContent = 'Error: ' + msg.detail; break;
-      }
-    });
-    ws.addEventListener('close', () => {
-      console.log("⚠️ WS closed, retrying in 2s");
-      statusEl.textContent = 'Disconnected (WS). Reconnecting…';
-      setTimeout(connectWebSocket, 2000);
-    });
-    ws.addEventListener('error', e => {
-      console.error("WS error:", e);
-    });
+    for (const [id, title] of Object.entries(payload)) {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = title;
+      frag.appendChild(opt);
+    }
+    songSelect.replaceChildren(frag);
+    songSelect.selectedIndex = Math.min(1, songSelect.options.length - 1);
   }
 
   function handleSongUpdate(pages, count) {
+    pagesCache = pages;
     pageTotEl.textContent = count;
     pageNumEl.textContent = '1';
-    pageImg.src           = pages[0];
-    pager.style.display   = 'block';
+    pageImg.src = pages[0] || '';
+    pager.style.display = 'block';
   }
 
   function handlePageUpdate(page) {
     pageNumEl.textContent = page;
-    ws.send(JSON.stringify({ type:'get_image', page }));
+    if (wsOpen()) {
+      ws.send(JSON.stringify({ type: 'get_image', page }));
+    } else if (pagesCache[page - 1]) {
+      pageImg.src = pagesCache[page - 1];
+    }
   }
 
-  btnSetSong.addEventListener('click', async () => {
-    console.log("→ POST /rooms/" + roomId + "/song");
-    await fetch(`http://${API_HOST}/rooms/${roomId}/song`, {
+  btnSetSong?.addEventListener('click', async () => {
+    if (!songSelect.value) return;
+    await fetch(`http://${API_HOST}/rooms/${encodeURIComponent(roomId)}/song`, {
       method: 'POST',
       headers: {
         'Authorization': 'Bearer ' + token,
@@ -185,17 +208,41 @@
       },
       body: JSON.stringify({ song_id: songSelect.value })
     });
+    await loadRoomState(); // update immediately even without WS
   });
 
-  prevBtn.addEventListener('click', () => changePage(-1));
-  nextBtn.addEventListener('click', () => changePage(1));
+// --- REPLACE your current btnSetSong handler with this ---
+btnSetSong?.addEventListener('click', async () => {
+  const id = songSelect.value;
+  if (!id) { statusEl.textContent = 'Pick a song first.'; return; }
+
+  statusEl.textContent = 'Setting song…';
+  const res = await fetch(`http://${API_HOST}/rooms/${encodeURIComponent(roomId)}/song`, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Content-Type':  'application/json'
+    },
+    body: JSON.stringify({ song_id: id })
+  });
+  if (!res.ok) {
+    statusEl.textContent = 'Set song failed: ' + await res.text();
+    return;
+  }
+
+  // Invisibly kick off render, then wait for pages to be ready
+  await triggerSongRender(id);
+  statusEl.textContent = 'Generating pages…';
+  const ready = await waitForPages();
+  statusEl.textContent = ready ? 'Ready.' : 'Still generating… try again in a moment.';
+});
+
 
   async function changePage(delta) {
     const curr = +pageNumEl.textContent;
     const next = curr + delta;
     if (next < 1 || next > +pageTotEl.textContent) return;
-    console.log(`→ POST /rooms/${roomId}/page {page: ${next}}`);
-    await fetch(`http://${API_HOST}/rooms/${roomId}/page`, {
+    await fetch(`http://${API_HOST}/rooms/${encodeURIComponent(roomId)}/page`, {
       method: 'POST',
       headers: {
         'Authorization': 'Bearer ' + token,
@@ -203,6 +250,62 @@
       },
       body: JSON.stringify({ page: next })
     });
+    handlePageUpdate(next); // fallback shows instantly
+  }
+
+  async function connectWebSocket() {
+    const base = `ws://${API_HOST}/ws/${encodeURIComponent(roomId)}`;
+    const attempts = [
+      () => new WebSocket(`${base}?token=${encodeURIComponent(token)}`), // query token
+      () => new WebSocket(base, [token]),                                // subprotocol token
+      () => new WebSocket(base)                                          // no handshake token
+    ];
+
+    for (const make of attempts) {
+      try {
+        const candidate = make();
+        const opened = await new Promise((resolve, reject) => {
+          const to = setTimeout(() => reject(new Error('timeout')), 3500);
+          candidate.addEventListener('open', () => { clearTimeout(to); resolve(true); });
+          candidate.addEventListener('close', e => { clearTimeout(to); reject(Object.assign(new Error('closed'), { code: e.code, reason: e.reason })); });
+          candidate.addEventListener('error', () => {}); // wait for close
+        });
+
+        // success
+        ws = candidate;
+        stopPolling();
+        statusEl.textContent = 'Connected (WS)';
+        console.log('✅ WS open');
+
+        ws.addEventListener('message', e => {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'song_update') handleSongUpdate(msg.pages, msg.pages.length);
+          if (msg.type === 'page_update') handlePageUpdate(msg.page);
+          if (msg.type === 'image_data')  pageImg.src = msg.image;
+          if (msg.type === 'error')       statusEl.textContent = 'Error: ' + msg.detail;
+        });
+
+        ws.addEventListener('close', e => {
+          console.warn(`WS closed code=${e.code} reason=${e.reason || '(none)'}`);
+          statusEl.textContent = 'Disconnected (WS). Reconnecting…';
+          ws = null;
+          startPolling();
+          setTimeout(connectWebSocket, 2000);
+        });
+
+        ws.addEventListener('error', e => console.error('WS error:', e));
+
+        // if server expects token as first message, this covers it
+        try { ws.send(JSON.stringify({ token })); } catch {}
+
+        return;
+      } catch (e) {
+        console.warn('WS attempt failed', e.code || '', e.reason || e.message);
+      }
+    }
+    // all attempts failed — keep polling and retry soon
+    startPolling();
+    setTimeout(connectWebSocket, 2000);
   }
 </script>
 {% endblock %}
