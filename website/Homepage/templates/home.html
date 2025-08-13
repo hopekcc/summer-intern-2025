@@ -3,19 +3,324 @@
 
 {% block title %}Welcome | HOPEKCC{% endblock %}
 
+{% block head %}
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+    
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        min-height: 100vh;
+    }
+    
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem;
+    }
+    
+    /* Welcome Section */
+    .welcome-section {
+        display: flex;
+        align-items: center;
+        gap: 3rem;
+        margin-bottom: 4rem;
+        background: white;
+        padding: 3rem;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+    
+    .welcome-text {
+        flex: 1;
+    }
+    
+    .welcome-text h1 {
+        font-size: 3rem;
+        color: #2d3748;
+        margin-bottom: 1rem;
+        font-weight: 700;
+    }
+    
+    .welcome-text p {
+        font-size: 1.2rem;
+        color: #718096;
+        margin-bottom: 2rem;
+        line-height: 1.6;
+    }
+    
+    .buttons {
+        display: flex;
+        gap: 1rem;
+    }
+    
+    .btn {
+        padding: 0.75rem 2rem;
+        border-radius: 10px;
+        text-decoration: none;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .btn:first-child {
+        background: #e2e8f0;
+        color: #4a5568;
+    }
+    
+    .btn-primary {
+        background: #4299e1;
+        color: white;
+    }
+    
+    .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+    
+    .screenshot {
+        flex: 1;
+        text-align: center;
+    }
+    
+    .screenshot img {
+        width: 100%;
+        max-width: 500px;
+        border-radius: 15px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    }
+    
+    .caption {
+        margin-top: 1rem;
+        color: #a0aec0;
+        font-size: 0.9rem;
+    }
+    
+    /* Music Section */
+    .music-section {
+        background: white;
+        padding: 3rem;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    
+    .music-section h2 {
+        font-size: 2.5rem;
+        color: #2d3748;
+        margin-bottom: 0.5rem;
+        font-weight: 700;
+    }
+    
+    .music-section .subtitle {
+        font-size: 1.2rem;
+        color: #718096;
+        margin-bottom: 3rem;
+    }
+    
+    .room-options {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+        margin-bottom: 3rem;
+    }
+    
+    .room-card {
+        background: #f7fafc;
+        padding: 2rem;
+        border-radius: 15px;
+        border: 2px solid #e2e8f0;
+    }
+    
+    .room-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        margin: 0 auto 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        color: white;
+    }
+    
+    .create-icon {
+        background: #38b2ac;
+    }
+    
+    .join-icon {
+        background: #553c9a;
+    }
+    
+    .room-card h3 {
+        font-size: 1.5rem;
+        color: #2d3748;
+        margin-bottom: 1rem;
+        font-weight: 600;
+    }
+    
+    .room-card p {
+        color: #718096;
+        margin-bottom: 1.5rem;
+        line-height: 1.6;
+    }
+    
+    .room-input {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px solid #e2e8f0;
+        border-radius: 10px;
+        margin-bottom: 1rem;
+        font-size: 1rem;
+    }
+    
+    .room-btn {
+        width: 100%;
+        padding: 0.75rem;
+        border: none;
+        border-radius: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .create-btn {
+        background: #38b2ac;
+        color: white;
+    }
+    
+    .join-btn {
+        background: #805ad5;
+        color: white;
+    }
+    
+    .room-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    }
+    
+    /* How it works */
+    .how-it-works {
+        margin-top: 3rem;
+    }
+    
+    .how-it-works h3 {
+        font-size: 1.5rem;
+        color: #2d3748;
+        margin-bottom: 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+    
+    .steps {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 2rem;
+    }
+    
+    .step {
+        text-align: center;
+    }
+    
+    .step-number {
+        width: 40px;
+        height: 40px;
+        background: #38b2ac;
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 1rem;
+        font-weight: 600;
+    }
+    
+    .step p {
+        color: #718096;
+        font-size: 0.9rem;
+    }
+    
+    @media (max-width: 768px) {
+        .welcome-section {
+            flex-direction: column;
+            text-align: center;
+        }
+        
+        .room-options {
+            grid-template-columns: 1fr;
+        }
+        
+        .steps {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<section class="welcome-section">
-    <div class="welcome-text">
-        <h1>Welcome {{ username }}!</h1>
-        <p>Welcome to our app! Feel free to look around! {{ insert_text }}</p>
-        <div class="buttons">
-            <a href="/tutorial" class="btn">Tutorial</a>
-            <a href="/get-started" class="btn btn-primary">Get Started</a>
+<div class="container">
+    <!-- Welcome Section -->
+    <section class="welcome-section">
+        <div class="welcome-text">
+            <h1>Welcome {{ username }}!</h1>
+            <p>Welcome to our app! Feel free to look around! {{ insert_text }}</p>
+            <div class="buttons">
+                <a href="/tutorial" class="btn">Tutorial</a>
+                <a href="/get-started" class="btn btn-primary">Get Started</a>
+            </div>
         </div>
-    </div>
-    <div class="screenshot">
-        <img src="{{ url_for('static', filename='img/home_image.png') }}" alt="Team Screenshot">
-        <p class="caption">^ PLACEHOLDER PICTURE</p>
-    </div>
-</section>
+        <div class="screenshot">
+            <img src="{{ url_for('static', filename='img/home_image.png') }}" alt="Team Screenshot">
+            <p class="caption">^ PLACEHOLDER PICTURE</p>
+        </div>
+    </section>
+
+    <!-- Music Sharing Section -->
+    <section class="music-section">
+        <h2>Ready to Share Music?</h2>
+        <p class="subtitle">Create a new room or join an existing one</p>
+        
+        <div class="room-options">
+            <div class="room-card">
+                <div class="room-icon create-icon">▶</div>
+                <h3>Create Room</h3>
+                <p>Start a new session and invite others to join. You'll be the host and control the song navigation.</p>
+                <a href="{{ url_for('create_room') }}" class="room-btn create-btn" style="display: block; text-decoration: none; text-align: center;">Create New Room</a>
+            </div>
+            
+            <div class="room-card">
+                <div class="room-icon join-icon">👥</div>
+                <h3>Join Room</h3>
+                <p>Enter a room code to join an existing session. You'll see what the host is sharing.</p>
+                <form action="{{ url_for('join_room') }}" method="POST">
+                    <input type="text" name="room_code" class="room-input" placeholder="Enter room code (e.g. ABC123)" required>
+                    <button type="submit" class="room-btn join-btn">Join Room</button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="how-it-works">
+            <h3>💡 How it works</h3>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <p>Create or join a room with friends</p>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <p>Host shares ChordPro songs</p>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <p>Everyone sees the same page in real-time</p>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
 {% endblock %}

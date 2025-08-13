@@ -1,0 +1,51 @@
+
+{% extends "base.html" %}
+
+{% block title %}All Songs{% endblock %}
+
+{% block content %}
+<div class="song-container" style="padding: 2rem;">
+  <h2>  All Songs</h2>
+  <div id="song-list">
+    <!-- Songs will be inserted here by JS -->
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", async () => {
+    const token = localStorage.getItem("firebase_token");
+
+    if (!token) {
+      alert("Please login first.");
+      window.location.href = "/login";
+      return;
+    }
+
+    const response = await fetch("http://34.125.143.141:8000/songs/list", {
+      headers: {
+        Authorization: "Bearer " + token
+      }
+    });
+
+    if (!response.ok) {
+      alert("Failed to fetch songs.");
+      return;
+    }
+
+    const songs = await response.json();
+    const container = document.getElementById("song-list");
+
+    songs.forEach(song => {
+      const div = document.createElement("div");
+      div.className = "song-card";
+      div.innerHTML = `
+        <p><strong>${song.title}</strong></p>
+        <a href="/songs/${song.id}/view">View</a>
+      `;
+      container.appendChild(div);
+    });
+  });
+</script>
+{% endblock %}
