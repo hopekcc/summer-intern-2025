@@ -1,0 +1,311 @@
+{# templates/room.html #}
+{% extends 'base.html' %}
+{% block title %}Room {{ room_id }}{% endblock %}
+
+{% block content %}
+  <h2>Room {{ room_id }}</h2>
+  <div id="status" style="margin-bottom:1rem;">Loading…</div>
+
+  <div id="host-controls" style="display:none; margin-bottom:1rem;">
+    <label>Pick song:
+      <select id="song-select"></select>
+    </label>
+    <button id="btn-set-song">Set Song</button>
+  </div>
+
+  <div id="pager" style="display:none; margin-bottom:1rem;">
+    <button id="prev">Prev</button>
+    Page <span id="current-page">1</span> of <span id="total-pages">1</span>
+    <button id="next">Next</button>
+  </div>
+
+  <div id="sheet-viewer">
+    <img id="page-img" alt="Sheet page" style="max-width:100%;" />
+  </div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+
+  const roomId       = "{{ room_id }}";
+  const API_HOST     = "34.125.143.141:8000";  // host:port only
+
+  const statusEl     = document.getElementById('status');
+  const hostControls = document.getElementById('host-controls');
+  const songSelect   = document.getElementById('song-select');
+  const btnSetSong   = document.getElementById('btn-set-song');
+  const pager        = document.getElementById('pager');
+  const prevBtn      = document.getElementById('prev');
+  const nextBtn      = document.getElementById('next');
+  const pageNumEl    = document.getElementById('current-page');
+  const pageTotEl    = document.getElementById('total-pages');
+  const pageImg      = document.getElementById('page-img');
+
+  // --- helpers to add ---
+function absUrl(path) {
+  if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) return path;
+  if (path.startsWith('/')) return `http://${API_HOST}${path}`;
+  return `http://${API_HOST}/${path}`;
+}
+
+// Silently trigger server-side render of pages via the PDF endpoint
+async function triggerSongRender(songId) {
+  try {
+    const res = await fetch(absUrl(`songs/${encodeURIComponent(songId)}/pdf`), {
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Accept': 'application/pdf',
+        'Cache-Control': 'no-store'
+      }
+    });
+    if (!res.ok) console.warn('PDF trigger failed:', res.status, await res.text());
+  } catch (e) {
+    console.warn('PDF trigger error:', e);
+  }
+}
+
+// Poll /rooms/{id}/current until pages exist
+async function waitForPages(timeoutMs = 15000, intervalMs = 700) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const r = await fetch(`http://${API_HOST}/rooms/${encodeURIComponent(roomId)}/current?ts=${Date.now()}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (r.ok) {
+      const state = await r.json();
+      if (state.pages && Array.isArray(state.pages) && state.pages.length) {
+        const pages = state.pages.map(absUrl);
+        handleSongUpdate(pages, pages.length);
+        handlePageUpdate(state.current_page ?? 1);
+        return true;
+      }
+    }
+    await new Promise(res => setTimeout(res, intervalMs));
+  }
+  return false;
+}
+
+
+  let ws, token, myUid;
+  let pagesCache = [];
+  let pollTimer = null;
+
+  function wsOpen() { return ws && ws.readyState === WebSocket.OPEN; }
+  function startPolling() {
+    if (!pollTimer) {
+      pollTimer = setInterval(loadRoomState, 1500);
+      console.log('⏱️ polling started');
+    }
+  }
+  function stopPolling() {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+      console.log('⏱️ polling stopped');
+    }
+  }
+
+  onAuthStateChanged(auth, async user => {
+    if (!user) return (window.location.href = '/login');
+    myUid = user.uid;
+    token = await user.getIdToken(true); // fresh token
+
+    // join room
+    const jr = await fetch(`http://${API_HOST}/rooms/join/${encodeURIComponent(roomId)}`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!jr.ok) {
+      statusEl.textContent = 'Error joining room: ' + await jr.text();
+      return;
+    }
+
+    await loadRoomInfo();
+    await Promise.all([loadRoomState(), loadSongList()]);
+
+    // try realtime; poll as fallback
+    connectWebSocket();
+    startPolling();
+  });
+
+  async function loadRoomInfo() {
+    const res = await fetch(`http://${API_HOST}/rooms/${encodeURIComponent(roomId)}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) return;
+    const info = await res.json();
+    const hostId = info.host ?? info.host_id ?? info.hostUid;
+    statusEl.textContent = hostId ? `Host: ${hostId}` : 'No host';
+    if (hostId === myUid) hostControls.style.display = 'block';
+  }
+
+  async function loadRoomState() {
+    const res = await fetch(`http://${API_HOST}/rooms/${encodeURIComponent(roomId)}/current?ts=${Date.now()}`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) return;
+    const state = await res.json();
+    if (state.pages && Array.isArray(state.pages) && state.pages.length) {
+      handleSongUpdate(state.pages, state.pages.length);
+      handlePageUpdate(state.current_page ?? 1);
+    }
+  }
+
+  async function loadSongList() {
+    const res = await fetch(`http://${API_HOST}/songs/list`, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) {
+      songSelect.replaceChildren();
+      statusEl.textContent = 'Error loading songs: ' + await res.text();
+      return;
+    }
+    const payload = await res.json(); // { "0001": "Jailhouse Rock", ... }
+
+    const frag = document.createDocumentFragment();
+    const ph = document.createElement('option');
+    ph.value = '';
+    ph.textContent = '— Select a song —';
+    frag.appendChild(ph);
+
+    for (const [id, title] of Object.entries(payload)) {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = title;
+      frag.appendChild(opt);
+    }
+    songSelect.replaceChildren(frag);
+    songSelect.selectedIndex = Math.min(1, songSelect.options.length - 1);
+  }
+
+  function handleSongUpdate(pages, count) {
+    pagesCache = pages;
+    pageTotEl.textContent = count;
+    pageNumEl.textContent = '1';
+    pageImg.src = pages[0] || '';
+    pager.style.display = 'block';
+  }
+
+  function handlePageUpdate(page) {
+    pageNumEl.textContent = page;
+    if (wsOpen()) {
+      ws.send(JSON.stringify({ type: 'get_image', page }));
+    } else if (pagesCache[page - 1]) {
+      pageImg.src = pagesCache[page - 1];
+    }
+  }
+
+  btnSetSong?.addEventListener('click', async () => {
+    if (!songSelect.value) return;
+    await fetch(`http://${API_HOST}/rooms/${encodeURIComponent(roomId)}/song`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type':  'application/json'
+      },
+      body: JSON.stringify({ song_id: songSelect.value })
+    });
+    await loadRoomState(); // update immediately even without WS
+  });
+
+// --- REPLACE your current btnSetSong handler with this ---
+btnSetSong?.addEventListener('click', async () => {
+  const id = songSelect.value;
+  if (!id) { statusEl.textContent = 'Pick a song first.'; return; }
+
+  statusEl.textContent = 'Setting song…';
+  const res = await fetch(`http://${API_HOST}/rooms/${encodeURIComponent(roomId)}/song`, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Content-Type':  'application/json'
+    },
+    body: JSON.stringify({ song_id: id })
+  });
+  if (!res.ok) {
+    statusEl.textContent = 'Set song failed: ' + await res.text();
+    return;
+  }
+
+  // Invisibly kick off render, then wait for pages to be ready
+  await triggerSongRender(id);
+  statusEl.textContent = 'Generating pages…';
+  const ready = await waitForPages();
+  statusEl.textContent = ready ? 'Ready.' : 'Still generating… try again in a moment.';
+});
+
+
+  async function changePage(delta) {
+    const curr = +pageNumEl.textContent;
+    const next = curr + delta;
+    if (next < 1 || next > +pageTotEl.textContent) return;
+    await fetch(`http://${API_HOST}/rooms/${encodeURIComponent(roomId)}/page`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type':  'application/json'
+      },
+      body: JSON.stringify({ page: next })
+    });
+    handlePageUpdate(next); // fallback shows instantly
+  }
+
+  async function connectWebSocket() {
+    const base = `ws://${API_HOST}/ws/${encodeURIComponent(roomId)}`;
+    const attempts = [
+      () => new WebSocket(`${base}?token=${encodeURIComponent(token)}`), // query token
+      () => new WebSocket(base, [token]),                                // subprotocol token
+      () => new WebSocket(base)                                          // no handshake token
+    ];
+
+    for (const make of attempts) {
+      try {
+        const candidate = make();
+        const opened = await new Promise((resolve, reject) => {
+          const to = setTimeout(() => reject(new Error('timeout')), 3500);
+          candidate.addEventListener('open', () => { clearTimeout(to); resolve(true); });
+          candidate.addEventListener('close', e => { clearTimeout(to); reject(Object.assign(new Error('closed'), { code: e.code, reason: e.reason })); });
+          candidate.addEventListener('error', () => {}); // wait for close
+        });
+
+        // success
+        ws = candidate;
+        stopPolling();
+        statusEl.textContent = 'Connected (WS)';
+        console.log('✅ WS open');
+
+        ws.addEventListener('message', e => {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'song_update') handleSongUpdate(msg.pages, msg.pages.length);
+          if (msg.type === 'page_update') handlePageUpdate(msg.page);
+          if (msg.type === 'image_data')  pageImg.src = msg.image;
+          if (msg.type === 'error')       statusEl.textContent = 'Error: ' + msg.detail;
+        });
+
+        ws.addEventListener('close', e => {
+          console.warn(`WS closed code=${e.code} reason=${e.reason || '(none)'}`);
+          statusEl.textContent = 'Disconnected (WS). Reconnecting…';
+          ws = null;
+          startPolling();
+          setTimeout(connectWebSocket, 2000);
+        });
+
+        ws.addEventListener('error', e => console.error('WS error:', e));
+
+        // if server expects token as first message, this covers it
+        try { ws.send(JSON.stringify({ token })); } catch {}
+
+        return;
+      } catch (e) {
+        console.warn('WS attempt failed', e.code || '', e.reason || e.message);
+      }
+    }
+    // all attempts failed — keep polling and retry soon
+    startPolling();
+    setTimeout(connectWebSocket, 2000);
+  }
+</script>
+{% endblock %}

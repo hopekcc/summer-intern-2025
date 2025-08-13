@@ -19,13 +19,68 @@
             </div>
         </li>
 
+        <!-- Dropdown menu for Rooms -->
+        <li class="dropdown">
+            <a href="#">Rooms ▾</a>
+            <div class="dropdown-content">
+                <a href="/rooms/create">Create Room</a>
+                <a href="/rooms/join">Join Room</a>
+            </div>
+        </li>
+
         <li><a href="/preview">Preview</a></li>
-        <li><a href="/download">Download</a></li>
         <li><a href="/support">Support</a></li>
         <li><a href="/mobile">Mobile App</a></li>
         <li><a href="#" onclick="toggleDarkMode()">Dark Mode</a></li>
-        <li><a href="/login">Sign In</a></li>
-        <li><a href="/signup" class="btn-signup">Sign Up</a></li>
+        <li id="nav-signin"><a href="/login">Sign In</a></li>
+        <li id="nav-signup"><a href="/signup" class="btn-signup">Sign Up</a></li>
+        <li id="nav-user" style="display:none; font-weight:bold; margin-left:1rem;"></li>
+        <li id="nav-logout" style="display:none;"><a href="#">Log Out</a></li>
     </ul>
 </nav>
+
+<script type="module">
+  import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
+  import { onAuthStateChanged, signOut } 
+    from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+
+  const signInLi  = document.getElementById('nav-signin');
+  const signUpLi  = document.getElementById('nav-signup');
+  const userLi    = document.getElementById('nav-user');
+  const logoutLi  = document.getElementById('nav-logout');
+
+  // Listen for auth changes
+  onAuthStateChanged(auth, user => {
+    if (user) {
+      // Hide Sign In / Up
+      signInLi.style.display = 'none';
+      signUpLi.style.display = 'none';
+
+      // Show user email/name
+      const name = user.displayName || user.email;
+      userLi.textContent = `Hi, ${name}`;
+      userLi.style.display = 'inline';
+
+      // Show Logout
+      logoutLi.style.display = 'inline';
+    } else {
+      // User signed out: show Sign In / Up
+      signInLi.style.display = 'inline';
+      signUpLi.style.display = 'inline';
+
+      // Hide user & logout
+      userLi.style.display = 'none';
+      logoutLi.style.display = 'none';
+      userLi.textContent = '';
+    }
+  });
+
+  // Hook up logout
+  logoutLi.addEventListener('click', async e => {
+    e.preventDefault();
+    await signOut(auth);
+    // Optionally redirect home:
+    window.location.href = '/';
+  });
+  </script>
 
