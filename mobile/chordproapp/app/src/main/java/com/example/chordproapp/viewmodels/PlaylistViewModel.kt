@@ -1,4 +1,4 @@
-package com.example.chordproapp.ui.theme
+package com.example.chordproapp.viewmodels
 
 import androidx.compose.runtime.mutableStateListOf
 import androidx.lifecycle.ViewModel
