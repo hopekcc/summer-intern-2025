@@ -1,86 +1,92 @@
 
 <nav class="navbar">
-    
-    <div class="logo">
-        <a href="/">HOPEKCC Chord Pro Tool</a>
-    </div>
+  <div class="logo">
+    <a href="/">HOPEKCC Chord Pro Tool</a>
+  </div>
 
+  <ul class="nav-links">
+    <li><a href="https://www.hopekcc.org/" target="_blank" rel="noopener noreferrer">About</a></li>
+    <li><a href="/features">Features</a></li>
 
-    <ul class="nav-links">
-         <li><a href="https://www.hopekcc.org/" target="_blank" rel="noopener noreferrer">About</a></li>
-        <li><a href="/features">Features</a></li>
+    <!-- Dropdown: Search -->
+    <li class="dropdown">
+      <a href="#">Search ▾</a>
+      <div class="dropdown-content">
+        <a href="/search_artist">Search by Artist</a>
+        <a href="/search_title">Search by Title</a>
+      </div>
+    </li>
 
-        <!-- Dropdown menu for Search -->
-        <li class="dropdown">
-            <a href="#">Search ▾</a>
-            <div class="dropdown-content">
-                <a href="/search_artist">Search by Artist</a>
-                <a href="/search_title">Search by Title</a>
-            </div>
-        </li>
+    <!-- Dropdown: Rooms -->
+    <li class="dropdown">
+      <a href="#">Rooms ▾</a>
+      <div class="dropdown-content">
+        <a href="/rooms/create">Create Room</a>
+        <a href="/rooms/join">Join Room</a>
+      </div>
+    </li>
 
-        <!-- Dropdown menu for Rooms -->
-        <li class="dropdown">
-            <a href="#">Rooms ▾</a>
-            <div class="dropdown-content">
-                <a href="/rooms/create">Create Room</a>
-                <a href="/rooms/join">Join Room</a>
-            </div>
-        </li>
+    <li><a href="/preview">Preview</a></li>
+    <li><a href="/support">Support</a></li>
+    <li><a href="/mobile">Mobile App</a></li>
+    <li><a href="#" onclick="toggleDarkMode()">Dark Mode</a></li>
 
-        <li><a href="/preview">Preview</a></li>
-        <li><a href="/support">Support</a></li>
-        <li><a href="/mobile">Mobile App</a></li>
-        <li><a href="#" onclick="toggleDarkMode()">Dark Mode</a></li>
-        <li id="nav-signin"><a href="/login">Sign In</a></li>
-        <li id="nav-signup"><a href="/signup" class="btn-signup">Sign Up</a></li>
-        <li id="nav-user" style="display:none; font-weight:bold; margin-left:1rem;"></li>
-        <li id="nav-logout" style="display:none;"><a href="#">Log Out</a></li>
-    </ul>
+    <!-- Auth links -->
+    <li id="nav-signin"><a href="/login?force=1">Sign In</a></li>
+    <li id="nav-signup"><a href="/signup" class="btn-signup">Sign Up</a></li>
+    <li id="nav-user" style="display:none; font-weight:bold; margin-left:1rem;"></li>
+    <li id="nav-logout" style="display:none;"><a href="#" id="logout-link">Log Out</a></li>
+  </ul>
 </nav>
+
+<!-- Dropdown menu style -->
+<style>
+  .dropdown { position: relative; }
+  .dropdown > a { cursor: pointer; }
+  .dropdown-content {
+    display: none; position: absolute; top: 100%; left: 0;
+    background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.1);
+    padding: .5rem 0; min-width: 180px; z-index: 10;
+  }
+  .dropdown-content a { display: block; padding: .5rem 1rem; white-space: nowrap; }
+  .dropdown:hover .dropdown-content { display: block; }
+</style>
 
 <script type="module">
   import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
-  import { onAuthStateChanged, signOut } 
+  import { onAuthStateChanged, signOut }
     from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
 
   const signInLi  = document.getElementById('nav-signin');
   const signUpLi  = document.getElementById('nav-signup');
   const userLi    = document.getElementById('nav-user');
   const logoutLi  = document.getElementById('nav-logout');
+  const logoutA   = document.getElementById('logout-link');
 
-  // Listen for auth changes
+  // Update navbar based on login state
   onAuthStateChanged(auth, user => {
     if (user) {
-      // Hide Sign In / Up
       signInLi.style.display = 'none';
       signUpLi.style.display = 'none';
 
-      // Show user email/name
-      const name = user.displayName || user.email;
+      const name = user.displayName || user.email || 'User';
       userLi.textContent = `Hi, ${name}`;
       userLi.style.display = 'inline';
 
-      // Show Logout
       logoutLi.style.display = 'inline';
     } else {
-      // User signed out: show Sign In / Up
       signInLi.style.display = 'inline';
       signUpLi.style.display = 'inline';
-
-      // Hide user & logout
       userLi.style.display = 'none';
       logoutLi.style.display = 'none';
       userLi.textContent = '';
     }
   });
 
-  // Hook up logout
-  logoutLi.addEventListener('click', async e => {
+  // Handle logout
+  logoutA.addEventListener('click', async (e) => {
     e.preventDefault();
-    await signOut(auth);
-    // Optionally redirect home:
-    window.location.href = '/';
+    try { await signOut(auth); } catch (_) {}
+    window.location.href = '/logout';  // clears session cookie, returns to home
   });
-  </script>
-
+</script>
