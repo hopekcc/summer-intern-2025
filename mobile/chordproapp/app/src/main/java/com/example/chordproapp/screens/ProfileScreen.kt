@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import com.example.chordproapp.R
-import com.example.chordproapp.ui.theme.PlaylistViewModel
+import com.example.chordproapp.viewmodels.PlaylistViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

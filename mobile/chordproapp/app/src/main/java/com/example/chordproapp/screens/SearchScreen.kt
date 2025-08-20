@@ -2,18 +2,45 @@ package com.example.chordproapp.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
+import com.example.chordproapp.navigation.AppNavigation
+import com.example.chordproapp.viewmodels.SearchViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
+
 @Composable
-fun SearchScreen() {
+fun SearchScreen(
+    navController: NavHostController,
+    idTokenProvider: () -> String?,
+    viewModel: SearchViewModel = viewModel {
+        SearchViewModel(idTokenProvider)
+    }
+) {
     var query by remember { mutableStateOf("") }
+    val searchResults by viewModel.searchResults.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState(initial = null)
+
+    LaunchedEffect(Unit) {
+        viewModel.loadAllSongs()
+    }
+
+    LaunchedEffect(query) {
+        if (query.isEmpty()) {
+            viewModel.loadAllSongs()
+        } else {
+            viewModel.searchSongs(query)
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background
@@ -76,19 +103,52 @@ fun SearchScreen() {
                 )
             }
 
-            // Search Results Section
-            if (query.isNotEmpty()) {
+            error?.let { errorMessage ->
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        )
+                    ) {
+                        Text(
+                            text = errorMessage,
+                            modifier = Modifier.padding(16.dp),
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            }
+
+            if (isLoading) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            if (searchResults.isNotEmpty()) {
                 item {
                     Text(
-                        "Search Results",
+                        if (query.isEmpty()) "All Songs" else "Search Results",
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
                 }
 
-                // Placeholder search results
-                items(5) { index ->
+                items(searchResults) { song ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -108,19 +168,22 @@ fun SearchScreen() {
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    "Music Sheet ${index + 1}",
+                                    song.title, // Use real song title
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    "Composer Name",
+                                    "Artist", // Artist
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                                     modifier = Modifier.padding(top = 4.dp)
                                 )
                             }
                             Button(
-                                onClick = { /* Add to playlist */ },
+                                onClick = {
+                                    // PDF viewing logic here
+                                    navController.navigate("viewer/${song.id}")
+                                },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.secondary,
                                     contentColor = MaterialTheme.colorScheme.primary
@@ -129,11 +192,26 @@ fun SearchScreen() {
                                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                             ) {
                                 Text(
-                                    "Add",
+                                    "View Sheet", // Updated button text
                                     style = MaterialTheme.typography.labelMedium
                                 )
                             }
                         }
+                    }
+                }
+            } else if (!isLoading && query.isNotEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "No songs found for \"$query\"",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                        )
                     }
                 }
             }
