@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.google.gms.google.services)
 }
 
 android {
@@ -40,10 +41,16 @@ android {
 }
 
 dependencies {
+    // Firebase BOM
+    implementation(platform("com.google.firebase:firebase-bom:34.0.0"))
 
-    // Firebase authentication
+    // Font
+    implementation("androidx.compose.ui:ui-text-google-fonts:1.8.1")
 
+    // Material Icons Extended - ADD ONLY THIS
+    implementation("androidx.compose.material:material-icons-extended")
 
+    // Your existing dependencies (keep all of these)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -54,7 +61,10 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.jsoup)
     implementation(libs.androidx.navigation.runtime.android)
-    implementation(libs.androidx.navigation.compose.android) // Or latest version
+    implementation(libs.androidx.navigation.compose.android)
+    implementation(libs.firebase.auth)
+    implementation(libs.androidx.tv.material) // KEEP THIS - your existing Firebase Auth
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
