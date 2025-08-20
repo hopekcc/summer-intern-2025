@@ -1,3 +1,16 @@
 <resources>
     <string name="app_name">chordproapp</string>
+    <string name="username">username</string>
+    <string name="idNum">id #:</string>
+    <string name="id">xxxxxx</string>
+
+    <string name="followers">followers:</string>
+    <string name="followerCount">xxx</string>
+    <string name="following">following:</string>
+    <string name="followingCount">xxx</string>
+
+    <string name="seeMore">see more</string>
+    <string name="createNewPlaylist">create new playlist</string>
+
+    <string name="newPlaylistName">New Playlist Name:</string>
 </resources>
