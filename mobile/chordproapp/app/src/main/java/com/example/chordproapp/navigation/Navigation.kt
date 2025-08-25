@@ -56,7 +56,7 @@ fun AppNavigation(
         }
         composable("playlist/{name}") { backStackEntry ->
             val name = backStackEntry.arguments?.getString("name") ?: "Playlist Name"
-            Playlist(title = name, songCount = 6, playlistViewModel)
+            Playlist(playlistName = name, songCount = 12, playlistViewModel,navController)
         }
 
         // Add this to your existing Navigation.kt file in the NavHost composable
