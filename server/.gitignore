@@ -13,5 +13,4 @@ security/
 room_database/
 .pytest_cache/
 /scripts/__pycache__/
-/scripts/runtime/__pycache__
-/scripts/setup/__pycache__
+server/scripts/__pycache__
