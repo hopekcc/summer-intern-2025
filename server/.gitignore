@@ -8,9 +8,8 @@ __pycache__/
 aakash/
 logs/
 pdf_testing/
-/song_data
+/song_database
 security/
 room_database/
 .pytest_cache/
 /scripts/__pycache__/
-server/scripts/__pycache__
