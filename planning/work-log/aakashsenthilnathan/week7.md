@@ -1,7 +1,8 @@
 # HopeKCC Summer Intern – Weekly Work Log
+
 ### Name: [Aakash Senthilnathan]
 ### Track: [Server]
-### Week: [Week 7]
+### Week: [Week 6]
 ### Date: [August 13-August 19]
 ### Hour: [19]
 
