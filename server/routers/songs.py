@@ -1,175 +1,247 @@
-from fastapi import APIRouter, Depends, HTTPException
-from starlette.responses import FileResponse
-from rapidfuzz import process, fuzz
-import subprocess
-import json
 import os
-import shutil
+import gzip
+import json
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi.responses import FileResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
+from scripts.runtime.logger import logger as _app_logger
 
-from server.dependencies import (
-    verify_firebase_token, 
-    get_songs_dir, 
-    get_metadata_path, 
-    get_songs_pdf_dir
+# Import from our consolidated modules
+from scripts.runtime.paths import get_songs_pdf_dir, get_songs_img_dir, get_songs_list_gzip_path
+from scripts.runtime.database import (
+    Song,
+    get_db_session,
+    search_songs,
+    get_song_by_id_from_db,
+    search_songs_substring,
+    search_songs_similarity,
+    search_songs_text,
 )
-from server.scripts.database_models import SongMetadata
+from scripts.runtime.auth_middleware import get_current_user
+
+logger = _app_logger.getChild("api.songs")
+
 router = APIRouter()
 
 # ============================================================================
 # SONG MANAGEMENT HELPERS
 # ============================================================================
 
-def listOfSongs(metadata_path: str = Depends(get_metadata_path)):
-    if not os.path.exists(metadata_path):
-        print("⚠️ Metadata file not found.")
-        return {}
-    
-    with open(metadata_path, "r") as f:
-        metadata = json.load(f)
-    
-    songs = {}
-    for song_id, filename in metadata.items():
-        title = os.path.splitext(filename)[0]  # Remove .pro/.cho extension
-        songs[song_id] = title
-    return songs
+# Note: song DB helpers are imported from `scripts.runtime.database`
 
-def specficSong(song_id: str, metadata_path: str = Depends(get_metadata_path)):
-    with open(metadata_path, "r") as f:
-        metadata = json.load(f)
-    if song_id in metadata:
-        return metadata[song_id]
-    else:
-        raise HTTPException(status_code=404, detail="Song not found")
+async def get_song_dependency(song_id: str, db: AsyncSession = Depends(get_db_session)) -> Song:
+    """Dependency to get a song by its ID from the database asynchronously."""
+    return await get_song_by_id_from_db(db, song_id)
 
-
-# PDF conversion helpers
-def convert_chordpro_to_pdf(input_file: str, output_file: str):
-    """
-    Converts a ChordPro file to PDF, accommodating both system-wide installations
-    (like on Windows) and local dependency setups (like on a Linux server).
-    """
-    
-    # Get paths from environment variables. These are typically set for local/portable installations.
-    chordpro_cmd = os.getenv("CHORDPRO_PATH")
-    perl5lib_path = os.getenv("PERL5LIB_PATH")
-
-    # If CHORDPRO_PATH isn't set or valid, search the system's PATH.
-    if not chordpro_cmd or not os.path.exists(chordpro_cmd):
-        chordpro_cmd = shutil.which("chordpro")
-
-    # If no chordpro command can be found, we cannot proceed.
-    if not chordpro_cmd:
-        raise HTTPException(
-            status_code=500,
-            detail="ChordPro command not found. Please set CHORDPRO_PATH in .env or install it in your system PATH."
-        )
-
-    # Prepare the environment for the subprocess.
-    # This is crucial for local Perl-based installations that need PERL5LIB.
-    cmd_env = os.environ.copy()
-    if perl5lib_path:
-        cmd_env["PERL5LIB"] = perl5lib_path
-        
-    print(f"Using ChordPro command: {chordpro_cmd}")
-    print("Running conversion:", input_file, "→", output_file)
-
-    try:
-        subprocess.run(
-            [chordpro_cmd, "--output", output_file, input_file],
-            check=True,
-            capture_output=True,
-            text=True,
-            env=cmd_env,  # Pass the potentially modified environment
-        )
-    except subprocess.CalledProcessError as e:
-        # Capture and return the specific error from the ChordPro command
-        error_detail = e.stderr.strip() if e.stderr else "An unknown error occurred."
-        print(f"ChordPro conversion failed: {error_detail}")
-        raise HTTPException(status_code=500, detail=f"Failed to convert ChordPro file: {error_detail}")
-
-def songPDFHelper(
+async def songPDFHelper(
     song_id: str,
-    songs_dir: str = Depends(get_songs_dir),
-    songs_pdf_dir: str = Depends(get_songs_pdf_dir),
-    metadata_path: str = Depends(get_metadata_path)
+    db: AsyncSession = Depends(get_db_session),
+    songs_pdf_dir: str = Depends(get_songs_pdf_dir)
 ):
-    song_filename = specficSong(song_id, metadata_path)
-    pdf_filename = os.path.splitext(song_filename)[0] + ".pdf"
+    song = await get_song_by_id_from_db(db, song_id)
+    # Prefer new layout: songs_pdf/{id}.pdf
+    pdf_filename = f"{song.id}.pdf"
     pdf_path = os.path.join(songs_pdf_dir, pdf_filename)
-    
     if os.path.exists(pdf_path):
         return pdf_path
-
-    # If PDF doesn't exist, create it
-    os.makedirs(songs_pdf_dir, exist_ok=True)
-    chordpro_path = os.path.join(songs_dir, song_filename)
-    
-    if not os.path.exists(chordpro_path):
-        raise HTTPException(status_code=404, detail="ChordPro file not found.")
-
-    convert_chordpro_to_pdf(chordpro_path, pdf_path)
-    return pdf_path
+    # Back-compat fallback: songs_pdf/{basename(filename)}.pdf
+    if song.filename:
+        legacy_name = f"{os.path.splitext(song.filename)[0]}.pdf"
+        legacy_path = os.path.join(songs_pdf_dir, legacy_name)
+        if os.path.exists(legacy_path):
+            return legacy_path
+    # Not found
+    raise HTTPException(status_code=404, detail="PDF file not found.")
 
 # ============================================================================
 # ENDPOINTS
 # ============================================================================
 
-@router.get("/list")
-def get_songs_list(
-    songs_data: dict = Depends(listOfSongs),
-    current_user=Depends(verify_firebase_token)
+@router.get("/", response_model=None)
+async def get_songs_list(
+    search: str = None,
+    limit: int = 50,
+    offset: int = 0,
+    current_user=Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session)
 ):
-    return songs_data
+    """Get songs with pagination and optional search. Accessible via /songs/ and /songs/list"""
+    try:
+        if search:
+            # Search with limit
+            songs = await search_songs(session, search, limit)
+        else:
+            # Get paginated results instead of all songs
+            query = select(Song).order_by(Song.title).offset(offset).limit(limit)
+            result = await session.execute(query)
+            songs = result.scalars().all()
+        
+        return songs
+    except Exception as e:
+        logger.error(f"Failed to retrieve songs: {str(e)}", exc_info=True)
+        return []
 
-@router.get("/{song_id}", response_model=SongMetadata)
-def get_specific_song(
-    song_id: str, 
-    songs_data: dict = Depends(listOfSongs),
-    current_user=Depends(verify_firebase_token)
+@router.get("/list", response_model=None)
+def get_songs_list_json(
+    current_user=Depends(get_current_user),
+    gz_path: str = Depends(get_songs_list_gzip_path)
 ):
-    if song_id not in songs_data:
-        raise HTTPException(status_code=404, detail="Song not found")
+    """Return the full songs list as JSON by decoding the pre-generated gzip file.
+
+    Temporarily returns plain JSON (not gzip) to simplify clients.
+    """
+    if not os.path.exists(gz_path):
+        raise HTTPException(status_code=404, detail="Songs list not available. Run ingestion sync.")
+
+    try:
+        st = os.stat(gz_path)
+        with gzip.open(gz_path, 'rb') as f:
+            raw = f.read()
+        text = raw.decode('utf-8')
+        try:
+            data = json.loads(text)
+            # Some generators accidentally dump JSON twice; handle nested string
+            if isinstance(data, str):
+                data = json.loads(data)
+        except Exception:
+            # Fallback: return text as-is inside an object for debugging
+            data = {"raw": text}
+        # FastAPI will serialize this as JSON automatically
+        return data
+    except Exception as e:
+        logger.error(f"Failed to decode songs list gzip: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to read songs list")
+
+@router.get("/{song_id}", response_model=None)
+async def get_specific_song(
+    current_user=Depends(get_current_user),
+    song: Song = Depends(get_song_dependency),
+    songs_pdf_dir: str = Depends(get_songs_pdf_dir)
+):
+    # Convert to dict so we can add additional fields
+    song_dict = song.model_dump()
     
-    title = songs_data[song_id]
+    # Add the total pages information
+    # Prefer new layout by song ID, then fallback to legacy filename-based PDF
+    pdf_filename = f"{song.id}.pdf"
+    pdf_path = os.path.join(songs_pdf_dir, pdf_filename)
+    if not os.path.exists(pdf_path) and song.filename:
+        legacy_name = f"{os.path.splitext(song.filename)[0]}.pdf"
+        legacy_path = os.path.join(songs_pdf_dir, legacy_name)
+        if os.path.exists(legacy_path):
+            pdf_path = legacy_path
     
-    # Here you could expand to fetch more details from another source if needed
-    # For now, we'll just return the ID and title.
-    return SongMetadata(id=song_id, title=title)
+    # Add PDF information
+    if os.path.exists(pdf_path):
+        song_dict["pdf_url"] = f"/songs/{song.id}/pdf"
+        song_dict["total_pages"] = song.page_count
+    else:
+        song_dict["pdf_url"] = None
+        song_dict["total_pages"] = 0
+        
+    # Add image URL (for cover/thumbnail)
+    song_dict["image_url"] = f"/songs/{song.id}/image"
+    
+    return song_dict
 
 @router.get("/{song_id}/pdf")
 def get_song_pdf(
     song_id: str, 
-    pdf_path: str = Depends(songPDFHelper),
-    current_user=Depends(verify_firebase_token)
+    current_user=Depends(get_current_user),
+    pdf_path: str = Depends(songPDFHelper)
 ):
+    st = os.stat(pdf_path)
+    headers = {
+        "Cache-Control": "public, max-age=86400",
+        "ETag": f"W/\"{st.st_size:x}-{int(st.st_mtime)}\"",
+    }
     return FileResponse(
         path=pdf_path,
         filename=os.path.basename(pdf_path),
-        media_type="application/pdf"
+        media_type="application/pdf",
+        headers=headers,
     )
-
-@router.get("/search/{query}")
-def search_songs(
-    query: str, 
-    songs_data: dict = Depends(listOfSongs),
-    current_user=Depends(verify_firebase_token)
+    
+@router.get("/{song_id}/image")
+def get_song_image(
+    song_id: str,
+    current_user=Depends(get_current_user),
+    song: Song = Depends(get_song_dependency),
+    songs_img_dir: str = Depends(get_songs_img_dir)
 ):
-    if not query:
-        return []
-    
-    titles = list(songs_data.values())
-    
-    # Use RapidFuzz to find the best matches
-    # process.extract returns a list of tuples: (title, score, song_id)
-    matches = process.extract(query, titles, scorer=fuzz.WRatio, limit=10)
-    
-    # Map titles back to song IDs
-    song_id_map = {v: k for k, v in songs_data.items()}
-    
-    # Format the results
-    results = [
-        {"song_id": song_id_map[match[0]], "title": match[0], "score": match[1]}
-        for match in matches if match[1] > 70  # Filter out low-score matches
-    ]
-    
-    return results 
+    """Return the song image from the songs_img directory"""
+    # Deterministic layout: songs_img/{song_id}/page_1.webp (cover thumbnail)
+    # DB-backed guard: ensure the song has at least one page
+    if getattr(song, "page_count", 0) < 1:
+        raise HTTPException(status_code=404, detail="Song has no pages")
+    song_dir = os.path.join(songs_img_dir, song.id)
+    path = os.path.join(song_dir, "page_1.webp")
+    try:
+        st = os.stat(path)
+    except FileNotFoundError:
+        # Unexpected if retriever guarantees assets, but fail fast with 404
+        raise HTTPException(status_code=404, detail="Song image not available")
+    headers = {
+        "Cache-Control": "public, max-age=86400",
+        "ETag": f"W/\"{st.st_size:x}-{int(st.st_mtime)}\"",
+    }
+    return FileResponse(path=path, media_type="image/webp", headers=headers)
+
+@router.get("/{song_id}/page/{page_number}")
+def get_song_page_image(
+    song_id: str,
+    page_number: int,
+    current_user=Depends(get_current_user),
+    song: Song = Depends(get_song_dependency),
+    songs_img_dir: str = Depends(get_songs_img_dir)
+):
+    """Return a specific page image for a song from the songs_img directory"""
+    # Deterministic layout: songs_img/{song_id}/page_{n}.webp
+    # DB-backed guard: page bounds check to avoid unnecessary FS work
+    if page_number < 1 or page_number > getattr(song, "page_count", 0):
+        raise HTTPException(status_code=404, detail=f"Page {page_number} is out of range (1..{song.page_count}) for song {song_id}")
+    song_dir = os.path.join(songs_img_dir, song.id)
+    path = os.path.join(song_dir, f"page_{page_number}.webp")
+    try:
+        st = os.stat(path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Page {page_number} image not available for song {song_id}")
+    headers = {
+        "Cache-Control": "public, max-age=86400",
+        "ETag": f"W/\"{st.st_size:x}-{int(st.st_mtime)}\"",
+    }
+    return FileResponse(path=path, media_type="image/webp", headers=headers)
+
+@router.get("/search/substring", response_model=None)
+async def search_substring(
+    q: str = Query(..., min_length=1),
+    limit: int = 10,
+    current_user=Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Case-insensitive substring search on title and artist with tiered scoring."""
+    return await search_songs_substring(session, q, limit)
+
+
+@router.get("/search/similarity", response_model=None)
+async def search_similarity(
+    q: str = Query(..., min_length=1),
+    limit: int = 10,
+    current_user=Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Trigram similarity search (pg_trgm)."""
+    return await search_songs_similarity(session, q, limit)
+
+
+@router.get("/search/text", response_model=None)
+async def search_text(
+    q: str = Query(..., min_length=1),
+    limit: int = 10,
+    current_user=Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Full-text search on title+artist with normalized ts_rank scoring."""
+    return await search_songs_text(session, q, limit)
