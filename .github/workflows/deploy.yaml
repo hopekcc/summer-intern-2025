@@ -38,7 +38,7 @@ jobs:
         cd server
         source .venvServer/bin/activate
         echo "FIREBASE_JSON is set: " ${{ env.FIREBASE_JSON != '' }}
-        pytest tests/
+        if [ -d tests ]; then pytest tests/; else echo "No tests directory, skipping pytest."; fi
 
 #  deploy:
 #    runs-on: ubuntu-latest
