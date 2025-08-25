@@ -1,1 +1,0 @@
-{title: (Let Me Be Your) Teddy Bear}
