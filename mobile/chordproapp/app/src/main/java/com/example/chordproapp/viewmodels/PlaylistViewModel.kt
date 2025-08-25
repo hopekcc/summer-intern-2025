@@ -4,6 +4,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.lifecycle.ViewModel
 
 class PlaylistViewModel : ViewModel() {
+
     private val _playlists = mutableStateListOf(
         "Playlist 1",
         "Playlist 2",

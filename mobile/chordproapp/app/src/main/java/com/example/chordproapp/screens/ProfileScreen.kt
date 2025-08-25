@@ -1,26 +1,65 @@
 package com.example.chordproapp.screens
 
 import android.annotation.SuppressLint
+import android.net.Uri
+import android.text.Layout
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.chordproapp.R
 import com.example.chordproapp.viewmodels.PlaylistViewModel
 
@@ -31,6 +70,17 @@ fun ProfileScreen(
     playlistViewModel: PlaylistViewModel,
     onLogout: () -> Unit
 ) {
+    val context = LocalContext.current
+
+    var profilePictureUri by rememberSaveable { mutableStateOf<Uri?>(null)}
+
+    val pickPhoto = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+            profilePictureUri = uri
+        }
+
+
     val playlists = playlistViewModel.playlists
     val first3Playlists = playlists.take(3)
 
@@ -58,7 +108,7 @@ fun ProfileScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 32.dp),
+                        .padding(bottom = 24.dp),
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surface
@@ -67,26 +117,70 @@ fun ProfileScreen(
                     border = CardDefaults.outlinedCardBorder()
                 ) {
                     Row(
-                        modifier = Modifier.padding(24.dp),
+                        modifier = Modifier.padding(15.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Card(
-                            shape = CircleShape,
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.secondary
-                            ),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        //profile picture
+                        Box(
+                            modifier = Modifier
+                                .size(60.dp)
+                                .clickable {
+                                    pickPhoto.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                            },
+                            contentAlignment = Alignment.BottomEnd
                         ) {
-                            val profilePicture = painterResource(R.drawable.user_icon)
-                            Image(
-                                painter = profilePicture,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
+                            //click to edit profile picture
+                            Card(
+                                shape = CircleShape,
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.secondary
+                                ),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                val defaultPfp = painterResource(R.drawable.user_icon)
+
+                                if (profilePictureUri != null) {
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(context)
+                                            .data(profilePictureUri)
+                                            .crossfade(true)
+                                            .build(),
+                                        contentDescription = "Profile Picture",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize(),
+                                        placeholder = defaultPfp,
+                                        error = defaultPfp
+                                    )
+                                } else {
+                                    Image(
+                                        painter = defaultPfp,
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                            }
+                            //edit pfp icon
+                            Card(
+                                shape = CircleShape,
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                                 modifier = Modifier
-                                    .size(80.dp)
-                                    .padding(16.dp)
-                            )
+                                    .size(28.dp)
+                                    .padding(2.dp),
+                                colors = CardDefaults.cardColors(
+                                    MaterialTheme.colorScheme.primary)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Edit Profile Picture",
+                                    modifier = Modifier.padding(2.dp)
+                                )
+                            }
                         }
+
 
                         Spacer(modifier = Modifier.width(20.dp))
 
@@ -96,28 +190,28 @@ fun ProfileScreen(
                                 style = MaterialTheme.typography.titleLarge,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
-                            val idNumber = stringResource(R.string.idNum) + " " + stringResource(R.string.id)
-                            Text(
-                                idNumber,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                            Row(modifier = Modifier.padding(top = 8.dp)) {
-                                val followers = stringResource(R.string.followers) + " " + stringResource(R.string.followerCount)
-                                Text(
-                                    followers,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                )
-                                Spacer(modifier = Modifier.width(16.dp))
-                                val following = stringResource(R.string.following) + " " + stringResource(R.string.followingCount)
-                                Text(
-                                    following,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                )
-                            }
+//                            val idNumber = stringResource(R.string.idNum) + " " + stringResource(R.string.id)
+//                            Text(
+//                                idNumber,
+//                                style = MaterialTheme.typography.bodyMedium,
+//                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+//                                modifier = Modifier.padding(top = 4.dp)
+//                            )
+//                            Row(modifier = Modifier.padding(top = 8.dp)) {
+//                                val followers = stringResource(R.string.followers) + " " + stringResource(R.string.followerCount)
+//                                Text(
+//                                    followers,
+//                                    style = MaterialTheme.typography.bodySmall,
+//                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+//                                )
+//                                Spacer(modifier = Modifier.width(16.dp))
+//                                val following = stringResource(R.string.following) + " " + stringResource(R.string.followingCount)
+//                                Text(
+//                                    following,
+//                                    style = MaterialTheme.typography.bodySmall,
+//                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+//                                )
+//                            }
                         }
                     }
                 }
@@ -128,7 +222,7 @@ fun ProfileScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 20.dp),
+                        .padding(bottom = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -158,7 +252,7 @@ fun ProfileScreen(
             }
 
             item {
-                // Action Buttons
+                // New Playlist Button
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -182,7 +276,8 @@ fun ProfileScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             "New Collection",
-                            style = MaterialTheme.typography.labelLarge
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(10.dp)
                         )
                     }
                 }
@@ -212,6 +307,7 @@ fun ProfileScreen(
         }
     }
 }
+
 
 @Composable
 fun PlaylistButton(text: String, onClick: () -> Unit) {
@@ -258,7 +354,12 @@ fun PlaylistButton(text: String, onClick: () -> Unit) {
 }
 
 @Composable
-fun Playlist(title: String, songCount: Int, playlistViewModel: PlaylistViewModel) {
+fun Playlist(
+    playlistName: String,
+    songCount: Int,
+    playlistViewModel: PlaylistViewModel,
+    navController: NavHostController
+) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
@@ -266,21 +367,24 @@ fun Playlist(title: String, songCount: Int, playlistViewModel: PlaylistViewModel
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(24.dp)
+                .padding(top = 35.dp, start = 24.dp, end = 24.dp, bottom = 24.dp)
         ) {
             item {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(bottom = 32.dp)
+                    modifier = Modifier.padding(bottom = 5.dp)
                 ) {
+                    BackButton { navController.popBackStack()}
+
                     Text(
-                        title,
+                        playlistName,
                         style = MaterialTheme.typography.headlineLarge,
                         color = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier.weight(1f)
                     )
+                    //delete playlist button
                     Button(
-                        onClick = { playlistViewModel.deletePlaylist(title) },
+                        onClick = { playlistViewModel.deletePlaylist(playlistName) },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.surface,
                             contentColor = MaterialTheme.colorScheme.error
@@ -294,6 +398,21 @@ fun Playlist(title: String, songCount: Int, playlistViewModel: PlaylistViewModel
                         )
                     }
                 }
+            }
+
+            item{
+                Text(
+                    text = "Songs",
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(start = 10.dp, top=5.dp, bottom = 5.dp))
+            }
+
+            item{
+                Text(
+                    text = "$songCount songs",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(start = 10.dp, bottom = 15.dp)
+                )
             }
 
             items(songCount) {
@@ -348,15 +467,21 @@ fun AllPlaylists(navController: NavController, playlistViewModel: PlaylistViewMo
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(24.dp)
+                .padding(top = 35.dp, start = 24.dp, end = 24.dp, bottom = 24.dp)
         ) {
             item {
-                Text(
-                    "All Sheet Collections",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(bottom = 32.dp)
-                )
+                Row (
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(bottom = 20.dp)
+                ){
+                    BackButton { navController.popBackStack()}
+
+                    Text(
+                        "All Sheet Collections",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                }
             }
 
             items(playlists) { name ->
@@ -380,15 +505,19 @@ fun NewPlaylist(navController: NavController, playlistViewModel: PlaylistViewMod
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(24.dp)
+                .padding(top = 35.dp, start = 24.dp, end = 24.dp, bottom = 24.dp)
         ) {
             item {
-                Text(
-                    "Create New Collection",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(bottom = 32.dp)
-                )
+                Row {
+//                    BackButton { navController.popBackStack()}
+
+                    Text(
+                        "Create Collection",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.padding(bottom = 32.dp)
+                    )
+                }
             }
 
             item {
@@ -397,7 +526,7 @@ fun NewPlaylist(navController: NavController, playlistViewModel: PlaylistViewMod
                     onValueChange = { playlistName = it },
                     label = {
                         Text(
-                            "Collection Name",
+                            "New Collection Name",
                             style = MaterialTheme.typography.bodyLarge
                         )
                     },
@@ -433,7 +562,7 @@ fun NewPlaylist(navController: NavController, playlistViewModel: PlaylistViewMod
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
                 ) {
                     Text(
-                        "Create Collection",
+                        "Create New Collection",
                         style = MaterialTheme.typography.labelLarge
                     )
                 }
@@ -442,15 +571,64 @@ fun NewPlaylist(navController: NavController, playlistViewModel: PlaylistViewMod
     }
 }
 
-@SuppressLint("ViewModelConstructorInComposable")
-@Preview(showBackground = true)
 @Composable
-fun ProfileScreenPreview() {
+fun BackButton(onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+            contentDescription = "Back",
+            tint = MaterialTheme.colorScheme.onBackground
+        )
+    }
+}
+
+//@SuppressLint("ViewModelConstructorInComposable")
+//@Preview(showBackground = true)
+//@Composable
+//fun ProfileScreenPreview() {
+//    val previewNavController = rememberNavController()
+//    val previewPlaylistViewModel = PlaylistViewModel()
+//    ProfileScreen(
+//        navController = previewNavController,
+//        playlistViewModel = previewPlaylistViewModel,
+//        onLogout = {}
+//    )
+//}
+
+@SuppressLint("ViewModelConstructorInComposable")
+@Preview
+@Composable
+fun PlaylistPreview() {
     val previewNavController = rememberNavController()
     val previewPlaylistViewModel = PlaylistViewModel()
-    ProfileScreen(
+    Playlist(
+        playlistName= "Playlist 1",
+        songCount= 10,
         navController = previewNavController,
         playlistViewModel = previewPlaylistViewModel,
-        onLogout = {}
     )
 }
+//
+//@SuppressLint("ViewModelConstructorInComposable")
+//@Preview(showBackground = true)
+//@Composable
+//fun AllPlaylistsPreview() {
+//    val previewNavController = rememberNavController()
+//    val previewPlaylistViewModel = PlaylistViewModel()
+//    AllPlaylists(
+//        navController = previewNavController,
+//        playlistViewModel = previewPlaylistViewModel
+//    )
+//}
+//
+//@SuppressLint("ViewModelConstructorInComposable")
+//@Preview(showBackground = true)
+//@Composable
+//fun NewPlaylistPreview() {
+//    val previewNavController = rememberNavController()
+//    val previewPlaylistViewModel = PlaylistViewModel()
+//    NewPlaylist(
+//        navController = previewNavController,
+//        playlistViewModel = previewPlaylistViewModel
+//    )
+//}
