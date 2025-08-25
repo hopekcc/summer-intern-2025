@@ -51,8 +51,8 @@ echo ""
 echo "📁 Creating directory structure..."
 mkdir -p logs
 mkdir -p room_database
-mkdir -p song_data/songs
-mkdir -p song_data/songs_pdf
+mkdir -p song_database/songs
+mkdir -p song_database/songs_pdf
 
 # 3. Create Log Files
 echo "📝 Creating log files..."

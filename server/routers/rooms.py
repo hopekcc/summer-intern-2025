@@ -1,549 +1,399 @@
-import asyncio
-from scripts.runtime.logger import logger as _app_logger
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from starlette.status import HTTP_401_UNAUTHORIZED
+from starlette.responses import FileResponse
+from firebase_admin import auth
+import datetime
+import fitz
 import os
-import time
-import json
-from typing import Optional, List, Dict, Any, Tuple
-from datetime import datetime
+import base64
 
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, Response
-from fastapi.responses import FileResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-import hashlib
-
-from scripts.runtime.paths import get_songs_pdf_dir, get_songs_img_dir
-from scripts.runtime.database import (
-    Room, RoomParticipant, User, Song, get_db_session,
-    get_room_by_id_from_db, get_song_by_id_from_db,
-    create_room_db, delete_room, add_participant, remove_participant,
-    generate_room_id, get_room, log_room_action
-)
-from scripts.runtime.auth_middleware import get_current_user, get_room_access, get_host_access
-# Song model now imported from unified database above
-from scripts.runtime.websocket_server import get_websocket_factory
+from server.scripts.logger import logger
+from server.scripts.database_models import get_room, update_room, create_room_db, generate_room_id_db, log_room_action, delete_room
+from server.dependencies import verify_firebase_token, manager
+from server.routers.songs import songPDFHelper
+from server.dependencies import get_songs_dir, get_songs_pdf_dir, get_metadata_path
 
 router = APIRouter()
-logger = _app_logger.getChild("api.rooms")
 
-# ===================================================================
-# HTTP Endpoints - Now fully asynchronous
-# ===================================================================
+# ============================================================================
+# SONG DATA HELPER FUNCTIONS
+# ============================================================================
 
-# ----------------------------------------------------------------------------
-# Strong ETag helpers for images (BLAKE2b with configurable digest size)
-# ----------------------------------------------------------------------------
+def get_song_pdf_path(
+    song_id: str,
+    songs_dir: str = Depends(get_songs_dir),
+    songs_pdf_dir: str = Depends(get_songs_pdf_dir),
+    metadata_path: str = Depends(get_metadata_path)
+) -> str:
+    """Finds the file path for a song's PDF, generating it if it doesn't exist."""
+    pdf_path = songPDFHelper(song_id, songs_dir, songs_pdf_dir, metadata_path)
+    if not pdf_path or not os.path.exists(pdf_path):
+        logger.error(f"PDF for song ID '{song_id}' could not be found or created.")
+        raise HTTPException(status_code=404, detail=f"PDF for song ID '{song_id}' not found.")
+    return pdf_path
 
-_ETAG_BITS = os.getenv("ETAG_BITS", "128")
-try:
-    _ETAG_BITS_INT = int(_ETAG_BITS)
-    if _ETAG_BITS_INT not in (64, 128, 256):
-        _ETAG_BITS_INT = 128
-except Exception:
-    _ETAG_BITS_INT = 128
-
-_ETAG_CACHE: Dict[Tuple[str, int, int, int], str] = {}
-
-def _blake2b_hexdigest(path: str, digest_bits: int) -> str:
-    st = os.stat(path)
-    key = (path, st.st_size, int(st.st_mtime), digest_bits)
-    cached = _ETAG_CACHE.get(key)
-    if cached:
-        return cached
-    digest_size = digest_bits // 8
-    h = hashlib.blake2b(digest_size=digest_size)
-    # Read in chunks to minimize memory
-    with open(path, 'rb') as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b''):
-            h.update(chunk)
-    etag = h.hexdigest()
-    _ETAG_CACHE[key] = etag
-    return etag
-
-## Deterministic image layout: songs_img/{song_id}/page_{page}.webp
-## We no longer probe candidates; callers build the path directly and handle errors.
-
-@router.post("/")
-async def create_room(request: Request, host_data = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
-    start_time = time.perf_counter()
-    host_id = host_data['uid']
+def convert_pdf_to_images(pdf_path: str, page: int = None) -> list[str]:
+    """Converts a PDF file into a list of base64 encoded PNG images using PyMuPDF."""
+    base64_images = []
     try:
-        # Simple room creation without deleting old rooms to avoid timeout
-        room_id = generate_room_id()
-        new_room = await create_room_db(session, room_id, host_id)
-        await session.commit()  # Commit the room creation
-        # Pre-register WS room to avoid warnings before any client joins
-        try:
-            ws_factory = get_websocket_factory()
-            if ws_factory:
-                ws_factory.register_room(room_id)
-        except Exception:
-            logger.warning("Failed to pre-register WS room on create", exc_info=True, extra={"room_id": room_id})
-        elapsed = (time.perf_counter() - start_time) * 1000
-        logger.info(f"CREATE_ROOM total={elapsed:.1f}ms room={room_id}")
-        # Return room_id directly to avoid lazy loading after session commit
+        doc = fitz.open(pdf_path)
+        
+        start_page = page - 1 if page else 0
+        end_page = page if page else doc.page_count
+        
+        for page_num in range(start_page, end_page):
+            pix = doc[page_num].get_pixmap()
+            img_bytes = pix.tobytes()
+            img_str = base64.b64encode(img_bytes).decode("utf-8")
+            base64_images.append("data:image/png;base64," + img_str)
+        
+        doc.close()
+    except Exception as e:
+        logger.error(f"Failed during PyMuPDF conversion for {pdf_path}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to render song pages.")
+    
+    return base64_images
+
+def get_pdf_page_count(pdf_path: str) -> int:
+    """Gets the total number of pages in a PDF using PyMuPDF."""
+    try:
+        doc = fitz.open(pdf_path)
+        count = doc.page_count
+        doc.close()
+        return count
+    except Exception as e:
+        logger.error(f"Could not get page count for {pdf_path}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Could not retrieve song page count.")
+
+def _get_current_state_payload(
+    room_id: str, 
+    user_id: str,
+    songs_dir: str = Depends(get_songs_dir),
+    songs_pdf_dir: str = Depends(get_songs_pdf_dir),
+    metadata_path: str = Depends(get_metadata_path)
+) -> dict:
+    """Helper to generate the data payload for the current room state."""
+    room = get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found.")
+    
+    # Check if the user is a valid participant before sending state
+    if user_id not in room.get("participants", []):
+        raise HTTPException(status_code=403, detail="You are not a participant in this room.")
+    
+    song_id = room.get("current_song")
+    page = room.get("current_page")
+    
+    if not song_id or not page:
+        return {"type": "state_sync", "message": "No song is currently active in this room."}
+    
+    try:
+        pdf_path = get_song_pdf_path(song_id, songs_dir, songs_pdf_dir, metadata_path)
+        logger.info(f"Getting state for room {room_id}, song {song_id}, page {page}, pdf_path: {pdf_path}")
+        
+        current_image_list = convert_pdf_to_images(pdf_path, page=page)
+        total_pages = get_pdf_page_count(pdf_path)
+        
+        if not current_image_list:
+            logger.error(f"No images generated for room {room_id}, song {song_id}, page {page}")
+            raise HTTPException(status_code=404, detail="Current page image could not be found.")
+        
+        logger.info(f"Successfully generated state for room {room_id}: {len(current_image_list)} images, total_pages: {total_pages}")
+        
+        return {
+            "type": "state_sync",
+            "song_id": song_id,
+            "current_page": page,
+            "total_pages": total_pages,
+            "image": current_image_list[0]
+        }
+    except Exception as e:
+        logger.error(f"Error in _get_current_state_payload for room {room_id}: {e}", exc_info=True)
+        raise
+
+# ============================================================================
+# ROOM UPDATE FUNCTIONS
+# ============================================================================
+
+def make_song_update(user_id: str, song_id: str):
+    def update(room):
+        if room["host_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Only the host can change the song.")
+        room["current_song"] = song_id
+        room["current_page"] = 1
+        room["last_action"] = {"type": "song_update", "timestamp": datetime.datetime.now(datetime.UTC).isoformat(), "song_id": song_id}
+    return update
+
+def make_page_update(user_id: str, page: int):
+    def update(room):
+        if room["host_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Only host can update page")
+        room["current_page"] = page
+        room["last_action"] = {"type": "page_update", "timestamp": datetime.datetime.now(datetime.UTC).isoformat(), "page": page}
+    return update
+
+# ============================================================================
+# ROOM MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@router.post("/create")
+def create_room(current_user=Depends(verify_firebase_token)):
+    try:
+        host_id = current_user['uid']
+        room_id = generate_room_id_db()
+        room = create_room_db(room_id, host_id)
         return {"room_id": room_id}
     except Exception as e:
-        logger.error(f"Failed to create room for host {host_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Could not create room.")
+        logger.error(f"Failed to create room: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Room creation failed")
 
-@router.post("/{room_id}/join", response_model=None)
-async def join_room(room_id: str, room_and_user = Depends(get_room_access), session: AsyncSession = Depends(get_db_session)):
-    start_time = time.perf_counter()
-    room, user_id = room_and_user
-    try:
-        db_start = time.perf_counter()
-        await add_participant(session, room_id, user_id)
-        await session.commit()  # Commit the participant addition
-        db_elapsed = (time.perf_counter() - db_start) * 1000
-        logger.info(f"ADD_PARTICIPANT db={db_elapsed:.1f}ms")
-        
-        # Notify room participants via WebSocket
-        ws_factory = get_websocket_factory()
-        if ws_factory:
-            # Ensure room is known to WS factory (useful after server restarts)
-            try:
-                ws_factory.register_room(room_id)
-            except Exception:
-                logger.warning("WS register_room failed in join_room", exc_info=True, extra={"room_id": room_id})
-            asyncio.create_task(ws_factory.broadcast_to_room(room_id, {
-                "type": "participant_joined",
-                "user_id": user_id
-            }))
-            logger.info(f"Queued participant_joined event for user {user_id} in room {room_id} via WebSocket")
-        else:
-            logger.warning(f"WebSocket factory not available, could not send participant_joined event")
-        
-        total_elapsed = (time.perf_counter() - start_time) * 1000
-        logger.info(f"JOIN_ROOM total={total_elapsed:.1f}ms")
-        return {"message": f"User {user_id} joined room {room_id}"}
-    except HTTPException as e:
-        # Do not convert expected 4xx into 500s
-        raise e
-    except Exception as e:
-        logger.error(f"Failed to join room {room_id} for user {user_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Could not join room.")
+@router.post("/join/{room_id}")
+def join_room(room_id: str, current_user=Depends(verify_firebase_token)):
+    user_id = current_user["uid"]
+    
+    def join_user_to_room(room, uid):
+        if uid not in room["participants"]:
+            room["participants"].append(uid)
+    
+    room = update_room(room_id, lambda r: join_user_to_room(r, user_id))
+    
+    # Log action separately
+    log_room_action(room_id, "user_joined", user_id, {"timestamp": datetime.datetime.now(datetime.UTC).isoformat()})
+    
+    return room
 
-@router.post("/{room_id}/leave", response_model=None)
-async def leave_room(room_id: str, room_and_user = Depends(get_room_access), session: AsyncSession = Depends(get_db_session)):
-    room, user_id = room_and_user
-    try:
-        if not room:
-            raise HTTPException(status_code=404, detail="Room not found")
+@router.get("/{room_id}")
+def get_room_details(room_id: str, current_user=Depends(verify_firebase_token)):
+    room = get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    return room
 
-        # Avoid relationship lazy load; explicitly verify membership
-        membership_result = await session.execute(
-            select(RoomParticipant).where(
-                RoomParticipant.room_id == room_id,
-                RoomParticipant.user_id == user_id
-            )
-        )
-        if not membership_result.scalars().first():
-            raise HTTPException(status_code=400, detail="User is not in this room")
-
-        is_host = (user_id == room.host_id)
-        await remove_participant(session, room_id, user_id)
-        await log_room_action(session, room_id, "participant_left", user_id)
-
-        # Determine if room should be closed without triggering lazy load
-        participants_result = await session.execute(
-            select(RoomParticipant).where(RoomParticipant.room_id == room_id)
-        )
-        remaining_participants = participants_result.scalars().all()
-
-        # Get WebSocket factory
-        ws_factory = get_websocket_factory()
-
-        if is_host or len(remaining_participants) == 0:
-            logger.info(f"Host {user_id} left or room is empty. Closing room {room_id}.")
-            current_room = await get_room(session, room_id)
-            if current_room:
-                await delete_room(session, current_room)  # helper no longer commits
-            await session.commit()
-
-            # Notify room closure via WebSocket
-            if ws_factory:
-                try:
-                    ws_factory.register_room(room_id)
-                except Exception:
-                    logger.warning("WS register_room failed in leave_room(room_closed)", exc_info=True, extra={"room_id": room_id})
-                asyncio.create_task(ws_factory.broadcast_to_room(room_id, {
-                    "type": "room_closed",
-                    "room_id": room_id
-                }))
-                logger.info(f"Queued room_closed event for room {room_id} via WebSocket")
-            else:
-                logger.warning(f"WebSocket factory not available, could not send room_closed event")
-            message = "Host left, room closed"
-        else:
-            # Persist participant removal before notifying
-            await session.commit()
-
-            # Notify participant left via WebSocket
-            if ws_factory:
-                try:
-                    ws_factory.register_room(room_id)
-                except Exception:
-                    logger.warning("WS register_room failed in leave_room(participant_left)", exc_info=True, extra={"room_id": room_id})
-                asyncio.create_task(ws_factory.broadcast_to_room(room_id, {
-                    "type": "participant_left",
-                    "user_id": user_id
-                }))
-                logger.info(f"Queued participant_left event for user {user_id} in room {room_id} via WebSocket")
-            else:
-                logger.warning(f"WebSocket factory not available, could not send participant_left event")
-            message = f"User {user_id} left room {room_id}"
-
-        return {"message": message}
-    except HTTPException as e:
-        # Do not convert expected 4xx into 500s
-        raise e
-    except Exception as e:
-        logger.error(f"Failed to leave room {room_id} for user {user_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Could not leave room.")
-
-@router.get("/{room_id}", response_model=None)
-async def get_room_details(room_id: str, session: AsyncSession = Depends(get_db_session)):
-    room = await get_room_by_id_from_db(session, room_id)
+@router.post("/{room_id}/leave")
+def leave_room(room_id: str, current_user=Depends(verify_firebase_token)):
+    user_id = current_user["uid"]
+    room = get_room(room_id)
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
     
-    # Explicitly load participants to avoid async context issues
-    result = await session.execute(select(RoomParticipant).where(RoomParticipant.room_id == room_id))
-    participants = result.scalars()
-    participant_list = [p.user_id for p in participants.all()]
+    def leave_user_from_room(room, uid):
+        if uid in room["participants"]:
+            room["participants"].remove(uid)
     
-    return {
-        "room_id": room.room_id,
-        "host_id": room.host_id,
-        "current_song": room.current_song,
-        "current_page": room.current_page,
-        "participants": participant_list
-    }
+    room = update_room(room_id, lambda r: leave_user_from_room(r, user_id))
+    
+    # Log action
+    log_room_action(room_id, "user_left", user_id, {"timestamp": datetime.datetime.now(datetime.UTC).isoformat()})
+    
+    # Check if room should be closed
+    if not room["participants"] or user_id == room["host_id"]:
+        delete_room(room_id)
+        logger.info(f"Room {room_id} closed.")
+        return {"message": "Host left or room empty. Room closed."}
+    
+    return {"message": f"User {user_id} left room {room_id}."}
 
-@router.post("/{room_id}/song", response_model=None)
+# ============================================================================
+# REAL-TIME ACTION ENDPOINTS
+# ============================================================================
+
+@router.post("/{room_id}/song")
 async def select_song_for_room(
-    room_id: str,
-    request: Request,
-    room_and_user = Depends(get_host_access),
-    session: AsyncSession = Depends(get_db_session),
+    room_id: str, 
+    payload: dict, 
+    current_user=Depends(verify_firebase_token),
+    songs_dir: str = Depends(get_songs_dir),
     songs_pdf_dir: str = Depends(get_songs_pdf_dir),
-    songs_img_dir: str = Depends(get_songs_img_dir)
+    metadata_path: str = Depends(get_metadata_path)
 ):
-    body = await request.json()
-    song_id = body.get("song_id")
-    room, host_id = room_and_user
-
+    """HOST-ONLY: Sets a new song. Returns ALL images to the host. Broadcasts ONLY THE FIRST page image to participants."""
     try:
-        # Get song details from unified database using async session
-        song = await get_song_by_id_from_db(session, song_id)
+        user_id = current_user["uid"]
+        song_id = payload.get("song_id")
+        if not song_id:
+            raise HTTPException(status_code=400, detail="Missing 'song_id' in request body")
         
-        if not song:
-            raise HTTPException(status_code=404, detail=f"Song with ID '{song_id}' not found")
-
-        # Extract song data immediately to avoid accessing after session operations
-        song_title = song.title
-        song_artist = song.artist
-        song_filename = song.filename
-        song_page_count = song.page_count
-
-        # Verify the PDF exists (prefer ID-based PDF, fallback to legacy filename-based)
-        pdf_path = os.path.join(songs_pdf_dir, f"{song.id}.pdf")
-        if not os.path.exists(pdf_path):
-            if song_filename:
-                legacy_name = f"{os.path.splitext(song_filename)[0]}.pdf"
-                legacy_path = os.path.join(songs_pdf_dir, legacy_name)
-                if os.path.exists(legacy_path):
-                    pdf_path = legacy_path
-        if not os.path.exists(pdf_path):
-            raise HTTPException(status_code=404, detail="Song PDF not found. The song may not have been properly preloaded.")
-
-        # Update room state - fetch room in current session without eager loading
-        result = await session.execute(select(Room).where(Room.room_id == room_id))
-        current_room = result.scalars().first()
-        if not current_room:
-            raise HTTPException(status_code=404, detail="Room not found")
-            
-        current_room.current_song = song.id
-        current_room.current_page = 1
-        session.add(current_room)
+        update_room(room_id, make_song_update(user_id, song_id))
         
-        # Batch commit with room creation if needed
-        await session.commit()
-        # Remove expensive refresh - data already available
-
-        # 5. Compute image ETag for page 1 (metadata only) using weak ETag (size-mtime)
-        image_etag = None
-        try:
-            image_path = os.path.join(songs_img_dir, song.id, f"page_{1}.webp")
-            logger.info(f"Song selection - Using image path: {image_path} (song_id: {song.id})")
-            st = os.stat(image_path)
-            image_etag = f"W/\"{st.st_size:x}-{int(st.st_mtime)}\""
-        except Exception as e:
-            logger.error(f"Failed to compute image ETag for song selection: {e}")
+        # Log action
+        log_room_action(room_id, "song_update", user_id, {"song_id": song_id, "timestamp": datetime.datetime.now(datetime.UTC).isoformat()})
         
-        # Get WebSocket factory
-        ws_factory = get_websocket_factory()
-        if not ws_factory:
-            logger.warning(f"WebSocket factory not available, could not send song update events")
-            # Fallback to returning the data via HTTP
-            return {
-                "message": "Song selected successfully (WebSocket unavailable)",
-                "song_id": song.id,
-                "title": song_title,
-                "artist": song_artist,
-                "total_pages": song_page_count,
-                "current_page": 1,
-                "image_etag": image_etag,
-            }
+        pdf_path = get_song_pdf_path(song_id, songs_dir, songs_pdf_dir, metadata_path)
+        all_images = convert_pdf_to_images(pdf_path)  # Convert all pages
         
-        # Metadata-only payload; clients fetch image over HTTP when ETag changes
-        song_update_payload = {
-            'song_id': song.id,
-            'title': song_title,
-            'artist': song_artist,
-            'total_pages': song_page_count,
-            'current_page': 1,
-            'image_etag': image_etag,
-        }
+        if not all_images:
+            raise HTTPException(status_code=500, detail="Song rendering produced no images.")
         
-        # Send song update via WebSocket (metadata only)
-        if ws_factory:
-            try:
-                ws_factory.register_room(room_id)
-            except Exception:
-                logger.warning("WS register_room failed in select_song_for_room", exc_info=True, extra={"room_id": room_id})
-            asyncio.create_task(ws_factory.broadcast_song_updated(room_id, song_update_payload))
+        # Broadcast the FIRST page to participants
+        await manager.broadcast(room_id, {
+            "type": "song_update",
+            "song_id": song_id,
+            "image": all_images[0]
+        })
         
-        # Return fast response without image data
-        return {"message": "Song selected successfully", **song_update_payload}
-    except HTTPException as e:
-        raise e
+        # Return the FULL set of images to the host for preloading
+        return {"images": all_images}
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to select song {song_id} for room {room_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Select song error for room {room_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to set song.")
 
-@router.post("/{room_id}/page", response_model=None)
-async def update_room_page(room_id: str, request: Request, host_data = Depends(get_host_access), session: AsyncSession = Depends(get_db_session), songs_img_dir: str = Depends(get_songs_img_dir)):
-    body = await request.json()
-    page = body.get("page")
-    room, host_id = host_data
-    
+@router.post("/{room_id}/page")
+async def update_room_page(
+    room_id: str, 
+    payload: dict, 
+    current_user=Depends(verify_firebase_token),
+    songs_dir: str = Depends(get_songs_dir),
+    songs_pdf_dir: str = Depends(get_songs_pdf_dir),
+    metadata_path: str = Depends(get_metadata_path)
+):
+    """HOST-ONLY: Changes the page. Returns a simple confirmation. Broadcasts the NEW page's image to participants."""
     try:
-        
+        user_id = current_user["uid"]
+        page = payload.get("page")
         if not isinstance(page, int) or page < 1:
-            raise HTTPException(status_code=400, detail={
-                "code": "PAGE_INVALID",
-                "message": "A valid 'page' number is required."
-            })
-        # Load and update the room in the current session to persist page change
-        result = await session.execute(select(Room).where(Room.room_id == room_id))
-        current_room = result.scalars().first()
-        if not current_room:
-            raise HTTPException(status_code=404, detail="Room not found")
-
-        # DB-backed bounds check: if a song is selected, ensure page is within 1..page_count
-        song = None
-        if current_room.current_song:
-            song = await get_song_by_id_from_db(session, current_room.current_song)
-            total_pages = max(1, int(getattr(song, 'page_count', 1) or 1))
-            if page > total_pages:
-                raise HTTPException(status_code=400, detail={
-                    "code": "PAGE_OUT_OF_RANGE",
-                    "message": f"Page {page} is out of range (1..{total_pages})"
-                })
-
-        # Persist the new page number
-        current_room.current_page = page
-        session.add(current_room)
-
-        # Log the action in the same transaction
-        await log_room_action(session, room_id, "page_updated", host_id, {"page": page})
-
-        # Commit state change and log entry
-        await session.commit()
-
-        # Get song details and compute image ETag (metadata only) based on updated state
-        song_details = None
-        image_etag = None
-        if current_room.current_song:
-            try:
-                # song may have been loaded for bounds check; reuse it if available
-                if song is None:
-                    song = await get_song_by_id_from_db(session, current_room.current_song)
-                song_details = {
-                    'id': song.id,
-                    'title': song.title,
-                    'artist': song.artist,
-                    'total_pages': getattr(song, 'page_count', 1)
-                }
-                image_path = os.path.join(songs_img_dir, song.id, f"page_{page}.webp")
-                logger.info(f"Using image path: {image_path} (song_id: {song.id})")
-                st = os.stat(image_path)
-                image_etag = f"W/\"{st.st_size:x}-{int(st.st_mtime)}\""
-            except Exception as e:
-                logger.error(f"Failed to get song details for page update: {e}")
-
-        # Create payload with song metadata
-        page_update_payload = {
-            "current_page": page,
-            "song_id": current_room.current_song,
-            "title": song_details['title'] if song_details else 'Unknown',
-            "artist": song_details['artist'] if song_details else 'Unknown',
-            "total_pages": song_details['total_pages'] if song_details else 1,
-            "image_etag": image_etag,
-        }
+            raise HTTPException(status_code=400, detail="A valid 'page' number is required.")
         
-        # Send page update via WebSocket (metadata only)
-        ws_factory = get_websocket_factory()
-        if ws_factory:
-            try:
-                ws_factory.register_room(room_id)
-            except Exception:
-                logger.warning("WS register_room failed in update_room_page", exc_info=True, extra={"room_id": room_id})
-            asyncio.create_task(ws_factory.broadcast_page_updated(room_id, page_update_payload))
-        else:
-            logger.warning(f"WebSocket factory not available, could not send page_updated event")
-
+        room = get_room(room_id)
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found.")
+        song_id = room.get("current_song")
+        if not song_id:
+            raise HTTPException(status_code=400, detail="No song is active.")
+        
+        update_room(room_id, make_page_update(user_id, page))
+        
+        # Log action
+        log_room_action(room_id, "page_update", user_id, {"page": page, "timestamp": datetime.datetime.now(datetime.UTC).isoformat()})
+        
+        pdf_path = get_song_pdf_path(song_id, songs_dir, songs_pdf_dir, metadata_path)
+        page_image_list = convert_pdf_to_images(pdf_path, page=page)
+        
+        if not page_image_list:
+            raise HTTPException(status_code=404, detail=f"Page {page} could not be rendered.")
+        
+        await manager.broadcast(room_id, {
+            "type": "page_update",
+            "page": page,
+            "image": page_image_list[0]
+        })
         return {"message": "Page update broadcasted."}
-    except HTTPException as e:
-        # Propagate expected HTTP errors (e.g., 400 out-of-range) without converting to 500
-        raise e
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to update page for room {room_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Could not update page.")
+        logger.error(f"Update page error for room {room_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update page.")
+
+# ============================================================================
+# PARTICIPANT DATA-FETCHING ENDPOINTS
+# ============================================================================
+
+@router.get("/{room_id}/current")
+def get_current_room_state(
+    room_id: str, 
+    current_user=Depends(verify_firebase_token),
+    songs_dir: str = Depends(get_songs_dir),
+    songs_pdf_dir: str = Depends(get_songs_pdf_dir),
+    metadata_path: str = Depends(get_metadata_path)
+):
+    """PARTICIPANT: Gets everything needed to sync their view upon joining."""
+    try:
+        return _get_current_state_payload(room_id, current_user["uid"], songs_dir, songs_pdf_dir, metadata_path)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get current state error for room {room_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve current room state.")
 
 @router.get("/{room_id}/pdf")
-async def download_room_pdf(room_id: str, request: Request, room_and_user = Depends(get_room_access), session: AsyncSession = Depends(get_db_session)):
-    try:
-        room, user_id = room_and_user
-        if not room.current_song:
-            raise HTTPException(status_code=404, detail="No current song in this room")
-
-        # Get song details from the songs database
-        song = await get_song_by_id_from_db(session, room.current_song)
-        
-        # Prefer ID-based PDF name with legacy filename-based fallback
-        base_dir = request.app.state.songs_pdf_dir
-        pdf_path = os.path.join(base_dir, f"{song.id}.pdf")
-        if not os.path.exists(pdf_path) and song.filename:
-            legacy_name = f"{os.path.splitext(song.filename)[0]}.pdf"
-            legacy_path = os.path.join(base_dir, legacy_name)
-            if os.path.exists(legacy_path):
-                pdf_path = legacy_path
-        
-        if os.path.exists(pdf_path):
-            st = os.stat(pdf_path)
-            headers = {
-                "Cache-Control": "public, max-age=86400",
-                "ETag": f"W/\"{st.st_size:x}-{int(st.st_mtime)}\"",
-            }
-            return FileResponse(path=pdf_path, filename=os.path.basename(pdf_path), media_type="application/pdf", headers=headers)
-        else:
-            raise HTTPException(status_code=404, detail="Song PDF not found. The song may not have been properly preloaded.")
-    except HTTPException as e:
-        # Propagate 4xx as-is
-        raise e
-    except Exception as e:
-        logger.error(f"Failed to download PDF for room {room_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Could not download PDF.")
-
-@router.get("/{room_id}/image")
-async def get_room_current_image(
-    room_id: str,
-    request: Request,
-    room_and_user = Depends(get_room_access),
-    session: AsyncSession = Depends(get_db_session),
-    songs_img_dir: str = Depends(get_songs_img_dir),
+def download_room_pdf(
+    room_id: str, 
+    current_user=Depends(verify_firebase_token),
+    songs_dir: str = Depends(get_songs_dir),
+    songs_pdf_dir: str = Depends(get_songs_pdf_dir),
+    metadata_path: str = Depends(get_metadata_path)
 ):
-    """Serve the current room image with strong ETag caching.
-    Enforces auth and room access. Supports If-None-Match -> 304.
-    """
-    room, user_id = room_and_user
-    if not room.current_song or not room.current_page:
-        raise HTTPException(status_code=404, detail="No current song/page for this room")
+    room = get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    song_id = room.get("current_song")
+    if not song_id:
+        raise HTTPException(status_code=400, detail="No song selected for this room")
+    pdf_path = get_song_pdf_path(song_id, songs_dir, songs_pdf_dir, metadata_path)
+    return FileResponse(path=pdf_path, filename=os.path.basename(pdf_path), media_type="application/pdf")
 
-    # Deterministic path for current page image
-    image_path = os.path.join(songs_img_dir, room.current_song, f"page_{room.current_page}.webp")
-    mime = "image/webp"
+# ============================================================================
+# WEBSOCKET ENDPOINT
+# ============================================================================
 
-    # Compute weak ETag based on size and mtime (404 if file unexpectedly missing)
+@router.websocket("/ws/{room_id}")
+async def websocket_endpoint(websocket: WebSocket, room_id: str):
+    # Accept the WebSocket connection first
+    await websocket.accept()
     try:
-        st = os.stat(image_path)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Current page image not available")
-    etag_naked = f"{st.st_size:x}-{int(st.st_mtime)}"
-    etag_value = f'W/"{etag_naked}"'
+        # Get authentication token from client
+        token = await websocket.receive_text()
+        
+        # Verify the token
+        try:
+            decoded_token = auth.verify_id_token(token)
+            user_id = decoded_token["uid"]
+        except Exception as auth_error:
+            await websocket.close(code=4001, reason=f"Invalid auth token: {auth_error}")
+            return
+        
+        # Verify user is a participant in this room BEFORE connecting
+        room = get_room(room_id)
+        if not room:
+            await websocket.close(code=4004, reason="Room not found")
+            return
+        if user_id not in room["participants"]:
+            await websocket.close(code=4003, reason="Not a participant in this room")
+            return
+        
+        await manager.connect(room_id, websocket)
+        
+        try:
+            # Manually instantiate dependencies for the WebSocket context
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            
+            # This is a bit of a hack because Depends() doesn't work in WebSocket routes
+            # We assume a similar structure to how dependencies resolve paths
+            # This should be made more robust in a real application
+            
+            # Construct test paths if 'test' is in the path, otherwise construct real paths
+            # This is still not ideal. A better solution is a factory or context var.
+            is_test_env = "tests" in base_dir
 
-    # Conditional GET handling
-    if_none_match = request.headers.get('if-none-match')
-    if if_none_match:
-        # Normalize and compare; support weak or strong token formats
-        candidate = if_none_match.strip()
-        if candidate.startswith('W/'):
-            candidate = candidate[2:].strip()
-        if candidate.startswith('"') and candidate.endswith('"'):
-            candidate = candidate[1:-1]
-        if candidate == etag_naked:
-            # 304 Not Modified
-            return Response(status_code=304, headers={
-                "ETag": etag_value,
-                "Cache-Control": "private, no-cache",
-            })
+            if is_test_env:
+                test_song_db_path = os.path.abspath(os.path.join(base_dir, "..", "tests", "test_song_database"))
+                songs_dir = os.path.join(test_song_db_path, "songs")
+                songs_pdf_dir = os.path.join(test_song_db_path, "songs_pdf")
+                metadata_path = os.path.join(test_song_db_path, "songs_metadata.json")
+            else:
+                # Assuming the 'server' directory is the root for these paths
+                # This may need adjustment based on your actual project structure
+                real_song_db_path = os.path.join(base_dir, "..", "song_database")
+                songs_dir = os.path.join(real_song_db_path, "songs")
+                songs_pdf_dir = os.path.join(real_song_db_path, "songs_pdf")
+                metadata_path = os.path.join(real_song_db_path, "songs_metadata.json")
 
-    headers = {
-        "ETag": etag_value,
-        "Cache-Control": "private, no-cache",
-    }
-    return FileResponse(path=image_path, media_type=mime or "application/octet-stream", headers=headers)
-
-@router.get("/{room_id}/sync", response_model=None)
-async def sync_room_state(room_id: str, room_and_user = Depends(get_room_access), session: AsyncSession = Depends(get_db_session), songs_img_dir: str = Depends(get_songs_img_dir)):
-    # Get the current room state for syncing clients
-    room, user_id = room_and_user
-    try:
+            initial_state = _get_current_state_payload(room_id, user_id, songs_dir, songs_pdf_dir, metadata_path)
+            await websocket.send_json(initial_state)
+        except Exception as state_error:
+            logger.error(f"Failed to send initial state to user {user_id} in room {room_id}: {state_error}")
         
-        # Get participant list
-        participants_result = await session.execute(
-            select(RoomParticipant).where(RoomParticipant.room_id == room_id)
-        )
-        participant_list = [p.user_id for p in participants_result.scalars().all()]
-        
-        # If there's a current song, get its details
-        song_details = None
-        if room.current_song:
-            try:
-                song = await get_song_by_id_from_db(session, room.current_song)
-                song_details = {
-                    'id': song.id,
-                    'title': song.title,
-                    'artist': song.artist,
-                    'total_pages': getattr(song, 'page_count', 1)
-                }
-            except Exception as e:
-                logger.error(f"Failed to get song details for sync: {e}")
-        
-        # Compute image ETag for current page (metadata only) using weak ETag (size-mtime)
-        image_etag = None
-        if room.current_song and room.current_page:
-            try:
-                image_path = os.path.join(songs_img_dir, room.current_song, f"page_{room.current_page}.webp")
-                logger.info(f"Room sync - Using image path: {image_path} (song_id: {room.current_song})")
-                st = os.stat(image_path)
-                image_etag = f"W/\"{st.st_size:x}-{int(st.st_mtime)}\""
-            except Exception as e:
-                logger.error(f"Failed to compute image ETag for sync: {e}")
-        
-        return {
-            "room_id": room.room_id,
-            "host_id": room.host_id,
-            "current_song": room.current_song,
-            "current_page": room.current_page,
-            "song_details": song_details,
-            # Clients fetch image via HTTP GET /rooms/{room_id}/image when ETag changes
-            "image_etag": image_etag,
-            "participants": participant_list
-        }
+        while True:
+            await websocket.receive_text()
+            
+    except WebSocketDisconnect:
+        manager.disconnect(room_id, websocket)
+        logger.info(f"WebSocket disconnected from room {room_id}")
     except Exception as e:
-        logger.error(f"Failed to sync room {room_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Could not sync room state.")
+        logger.error(f"WebSocket error in room {room_id}: {e}", exc_info=True)
+        try:
+            await websocket.close(code=1011, reason="Internal server error")
+        except:
+            pass
+        manager.disconnect(room_id, websocket) 
