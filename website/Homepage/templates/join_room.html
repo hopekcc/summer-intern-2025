@@ -1,55 +1,32 @@
+
 {% extends 'base.html' %}
 {% block title %}Join Room{% endblock %}
 
 {% block content %}
+<section style="max-width:640px;margin:2rem auto;">
   <h2>Join an Existing Room</h2>
-  <form id="join-form">
+
+  {% if not user %}
+    <p style="color:#d00;">Tip: You’re not signed in. You can still join for a demo.</p>
+  {% endif %}
+
+  <form id="join-form" method="post" action="/rooms/join" style="margin-top:1rem;">
     <input
       type="text"
-      id="room-id"
-      placeholder="Enter Room ID"
+      name="room_code"
+      placeholder="Enter Room ID (e.g. ABC123)"
       required
-      style="padding:0.5rem; margin-right:0.5rem;"
+      maxlength="6"
+      style="text-transform:uppercase;padding:0.5rem;margin-right:0.5rem;"
     />
     <button type="submit">Join Room</button>
   </form>
-  <p id="join-result" style="margin-top:1rem;"></p>
-{% endblock %}
 
-{% block scripts %}
-<script type="module">
-  import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
-  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+  {% if error %}
+    <p id="join-result" style="margin-top:1rem;color:#d00;">{{ error }}</p>
+  {% endif %}
 
-  onAuthStateChanged(auth, user => {
-    const resultEl = document.getElementById('join-result');
-    if (!user) {
-      resultEl.textContent = 'Please sign in first.';
-      return;
-    }
-    document.getElementById('join-form').addEventListener('submit', async e => {
-      e.preventDefault();
-      resultEl.textContent = '';
-      const roomId = document.getElementById('room-id').value.trim();
-      const token = await user.getIdToken(/* forceRefresh */ true);
-
-      const res = await fetch(
-        `http://34.125.143.141:8000/rooms/join/${encodeURIComponent(roomId)}`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Bearer ' + token,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      if (!res.ok) {
-        resultEl.textContent = 'Error: ' + await res.text();
-        return;
-      }
-      // On success, go to the room page
-      window.location.href = `/rooms/${roomId}`;
-    });
-  });
-</script>
+  <hr style="margin:2rem 0;">
+  <p>No room yet? <a href="/rooms/create">Create one</a>.</p>
+</section>
 {% endblock %}

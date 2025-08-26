@@ -1,43 +1,49 @@
+
 {% extends 'base.html' %}
 {% block title %}Create Room{% endblock %}
 
 {% block content %}
+<section style="max-width:640px;margin:2rem auto;">
   <h2>Create a New Room</h2>
-  <button id="btn-create">Create Room</button>
+
+  {% if not user %}
+    <p style="color:#d00;">Tip: You’re not signed in. You can still create a demo room, but host-lock and history won’t be enforced.</p>
+  {% endif %}
+
+  <div style="display:flex;gap:0.75rem;align-items:center;margin-top:1rem;">
+    
+    <a class="btn-primary" href="/rooms/create" style="display:inline-block;padding:0.5rem 0.75rem;">Create (Redirect)</a>
+
+    
+    <button id="btn-create" style="padding:0.5rem 0.75rem;">Create (AJAX)</button>
+  </div>
+
   <p id="create-result" style="margin-top:1rem;"></p>
+
+  <hr style="margin:2rem 0;">
+  <p>Already have a room? <a href="/rooms/join">Join here</a>.</p>
+</section>
 {% endblock %}
 
 {% block scripts %}
-<script type="module">
-  import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
-  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
-
-  onAuthStateChanged(auth, user => {
-    if (!user) {
-      document.getElementById('create-result').textContent = 'Please sign in first.';
-      return;
-    }
-    document.getElementById('btn-create').addEventListener('click', async () => {
-      const token = await user.getIdToken(/* forceRefresh */ true);
-      const res = await fetch('http://34.125.143.141:8000/rooms/create', {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer ' + token,
-          'Content-Type': 'application/json'
+<script>
+  const btn = document.getElementById('btn-create');
+  const out = document.getElementById('create-result');
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      out.textContent = 'Creating...';
+      try {
+        const res = await fetch('/api/rooms', { method: 'POST' });
+        if (!res.ok) {
+          out.textContent = 'Error: ' + (await res.text());
+          return;
         }
-      });
-      if (!res.ok) {
-        document.getElementById('create-result').textContent = 'Error: ' + await res.text();
-        return;
+        const data = await res.json(); // { code: "ABC123" }
+        window.location.href = `/rooms/${data.code}`;
+      } catch (e) {
+        out.textContent = 'Network error: ' + e;
       }
-      const data = await res.json();        // { room_id: "ABC123" }
-      // Show link to room or redirect immediately:
-      const link = document.createElement('a');
-      link.href = `/rooms/${data.room_id}`;
-      link.textContent = `Go to Room ${data.room_id}`;
-      document.getElementById('create-result').innerHTML = '';
-      document.getElementById('create-result').appendChild(link);
     });
-  });
+  }
 </script>
 {% endblock %}
