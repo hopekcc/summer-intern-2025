@@ -1,10 +1,182 @@
-{% extends 'base.html' %}
 
-{% block title %}Success{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Room {{ room_id }}{% endblock %}
 
 {% block content %}
-  <div style="text-align:center; margin-top:2rem;">
-    <h1>Success 🎉</h1>
-    <p>Room created successfully.</p>
+<section style="max-width:980px;margin:2rem auto;">
+  <h1 style="margin-bottom:0.25rem;">Room: <code>{{ room_id }}</code></h1>
+  <p>Share this code with your friends so everyone can view the same song and page together.</p>
+
+  <!-- PDF Viewer -->
+  <div style="margin:1rem 0;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+      <strong>Now Showing</strong>
+      <span>
+        <strong>Song:</strong> <span id="v-song">—</span>
+        &nbsp;|&nbsp;
+        <strong>Page:</strong> <span id="v-page">1</span>
+      </span>
+    </div>
+
+    <iframe id="pdf-frame"
+            title="ChordPro PDF"
+            width="100%"
+            height="640"
+            style="border:1px solid #e5e7eb;border-radius:8px;background:#fff"
+            src="">
+    </iframe>
+
+    <p id="pdf-hint" style="color:#777;margin-top:0.5rem">
+      Select a song to load its PDF from backend.
+    </p>
   </div>
+
+  <!-- Host Controls -->
+  <details style="margin-top:1rem;">
+    <summary>Host controls</summary>
+    <div style="margin-top:0.75rem;display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;">
+      <label>Song ID:
+        <input id="songId" placeholder="e.g. believer" style="padding:0.4rem 0.6rem;">
+      </label>
+      <label>Page:
+        <input id="page" type="number" min="1" value="1" style="width:5rem;padding:0.4rem 0.6rem;">
+      </label>
+
+      <button id="share" style="padding:0.45rem 0.8rem;">Share / Update</button>
+      <button id="prev"  style="padding:0.45rem 0.8rem;">Prev</button>
+      <button id="next"  style="padding:0.45rem 0.8rem;">Next</button>
+    </div>
+  </details>
+
+  <p style="margin-top:2rem;"><a href="/rooms/join">← Back to Join</a></p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<!-- Socket.IO -->
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
+<!-- Firebase + Frontend Logic -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+
+  // ---- Firebase config (your project) ----
+  const firebaseConfig = {
+    apiKey: "AIzaSyAQ3r-8kqsWOgBkWRKs-bApV33oeu-AICs",
+    authDomain: "hopekcc-2024-summer-intern-api.firebaseapp.com",
+    projectId: "hopekcc-2024-summer-intern-api",
+    storageBucket: "hopekcc-2024-summer-intern-api.appspot.com",
+    messagingSenderId: "172531116306",
+    appId: "1:172531116306:web:d898ae28b5f79a425babcb"
+  };
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+
+  // ---- Jinja variables & elements ----
+  const roomId  = "{{ room_id }}";
+  const vSong   = document.getElementById("v-song");
+  const vPage   = document.getElementById("v-page");
+  const pdf     = document.getElementById("pdf-frame");
+  const hint    = document.getElementById("pdf-hint");
+
+  const songInput = document.getElementById("songId");
+  const pageInput = document.getElementById("page");
+  const shareBtn  = document.getElementById("share");
+  const prevBtn   = document.getElementById("prev");
+  const nextBtn   = document.getElementById("next");
+
+  let socket = null;
+  let idToken = null;
+
+  // ---- Apply state to UI + set iframe src via proxy ----
+  function applyState(state) {
+    const song = (state.songId || "").trim();
+    const page = Math.max(1, parseInt(state.page || 1, 10));
+    vSong.textContent = song || "—";
+    vPage.textContent = page;
+
+    // If no song or no token, clear src + show hint
+    if (!song || !idToken) {
+      pdf.removeAttribute("src");
+      hint.textContent = !idToken
+        ? "Please sign in to view the PDF."
+        : "Select a song to load its PDF.";
+      return;
+    }
+    hint.textContent = "";
+
+    // Use the Flask proxy so the server can attach Authorization header to FastAPI
+    // NOTE: Your FastAPI does not support 'page'; we still include it for client-side clarity.
+    const src = `/pdf/stream/${encodeURIComponent(song)}?page=${page}&token=${encodeURIComponent(idToken)}`;
+    pdf.src = src;
+  }
+
+  // ---- Local-only update (when not using socket) ----
+  function localUpdate() {
+    const song = songInput.value.trim();
+    const page = Math.max(1, parseInt(pageInput.value || "1", 10));
+    applyState({ songId: song, page });
+  }
+
+  // Default UI
+  applyState({ songId: "", page: 1 });
+
+  // ---- Host controls wiring ----
+  shareBtn.addEventListener("click", () => {
+    const payload = {
+      code: roomId,
+      songId: songInput.value.trim(),
+      page: parseInt(pageInput.value || "1", 10),
+      idToken, // include for server-side validation if your socket server needs it
+    };
+
+    if (socket && socket.connected && idToken) {
+      socket.emit("update_state", payload);
+    } else {
+      localUpdate();
+    }
+  });
+
+  prevBtn.addEventListener("click", () => {
+    pageInput.value = Math.max(1, (parseInt(pageInput.value || "1", 10) - 1));
+    shareBtn.click();
+  });
+
+  nextBtn.addEventListener("click", () => {
+    pageInput.value = parseInt(pageInput.value || "1", 10) + 1;
+    shareBtn.click();
+  });
+
+  // ---- Auth gate: wait for login, then get token, then connect socket ----
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      idToken = null;
+      hint.textContent = "Please sign in to view and sync the PDF.";
+      pdf.removeAttribute("src");
+      return;
+    }
+
+    // Always get a fresh token so backend verification succeeds
+    idToken = await user.getIdToken(true);
+
+    // Start Socket.IO only after we have a token
+    socket = io();
+    socket.on("connect", () => {
+      socket.emit("join_room", { code: roomId, idToken });
+    });
+
+    socket.on("sync_state", (state) => {
+      applyState(state);
+      if (songInput) songInput.value = state.songId || "";
+      if (pageInput) pageInput.value = state.page || 1;
+    });
+
+    socket.on("error_msg", (e) => console.warn("socket error:", e?.message || e));
+
+    window.addEventListener("beforeunload", () => {
+      try { socket.emit("leave_room", { code: roomId }); } catch {}
+    });
+  });
+</script>
 {% endblock %}
