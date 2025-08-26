@@ -63,33 +63,52 @@ body {
   background: rgba(0,0,0,0.05);
 }
 
-/* Dropdown container */
+/* Dropdown container - SINGLE DEFINITION */
 .nav-links .dropdown {
   position: relative;
   z-index: 100;
 }
 
-/* Style & hide panel by default */
+/* Style & hide panel by default - SINGLE DEFINITION */
 .dropdown-content {
   display: none;
-  position: absolute;
-  top: 100%;       /* sit immediately below the <li> */
-  left: 0;
-  margin-top: 4px; /* a little breathing room */
+  position: fixed; /* Changed from absolute to fixed */
   background: #fff;
   border: 1px solid #ccc;
-  border-top: none;       /* avoid double border against nav */
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  border-radius: 4px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
   min-width: 160px;
   white-space: nowrap;    /* keep each item one line */
-  z-index: 200;
+  z-index: 9999; /* Higher z-index */
+  padding: 0.5rem 0; /* Add some vertical padding */
 }
 
-/* Show on hover */
-.dropdown:hover .dropdown-content {
+/* Show on hover - Enhanced */
+.dropdown:hover .dropdown-content,
+.dropdown-content:hover {
   display: block;
 }
 
+/* Make sure the dropdown trigger area is large enough */
+.dropdown > a {
+  display: block;
+  padding: 0.5rem 0;
+}
+
+/* Style the dropdown items */
+.dropdown-content a {
+  display: block;
+  padding: 0.75rem 1rem;
+  color: #2b2f78;
+  text-decoration: none;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+}
+
+.dropdown-content a:hover {
+  background-color: #f0f4f8;
+  text-decoration: none;
+}
 
 .nav-links a {
   font-size: 16px;
