@@ -1,4 +1,4 @@
-name: CI Only (Test Server Code)
+name: CI/CD Workflow
 
 on:
   push:
@@ -9,11 +9,18 @@ on:
     branches: [ main ]
     paths:
       - 'server/**'
+  workflow_dispatch:  # Allow manual triggering
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'production'
 
 jobs:
   test:
+    name: Run Tests
     runs-on: ubuntu-latest
-
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     steps:
     - uses: actions/checkout@v3
 
@@ -40,41 +47,34 @@ jobs:
         echo "FIREBASE_JSON is set: " ${{ env.FIREBASE_JSON != '' }}
         if [ -d tests ]; then pytest tests/; else echo "No tests directory, skipping pytest."; fi
 
-#  deploy:
-#    runs-on: ubuntu-latest
-#    needs: test
-#    if: github.ref == 'refs/heads/main'
-#    
-#    steps:
-#    - uses: actions/checkout@v3
-#    
-#    - name: Set up Python
-#      uses: actions/setup-python@v4
-#      with:
-#        python-version: '3.12'
-#    
-#    - name: Setup environment
-#      env:
-#        FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
-#        FIREBASE_JSON: ${{ secrets.FIREBASE_JSON }}
-#      run: |
-#        cd server
-#        # Create .env with real secrets
-#        echo "FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }}" > .env
-#        echo "FIREBASE_JSON=${{ secrets.FIREBASE_JSON }}" >> .env
-#    
-#    - name: Deploy to VM
-#      run: |
-#        # Setup SSH
-#        echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
-#        chmod 600 ~/.ssh/id_rsa
-#        echo "${{ secrets.VM_HOST_KEY }}" >> ~/.ssh/known_hosts
-#        
-#        # Stop previous server instance
-#        ssh aakash_senthilnathan_gmail_c@34.125.143.141 "cd /home/server && (kill $(cat server.pid) || true) && rm -f server.pid"
-#        
-#        # Deploy new code
-#        scp -r server/ aakash_senthilnathan_gmail_c@34.125.143.141:/home/server/
-#        
-#        # Start new server instance
-#        ssh aakash_senthilnathan_gmail_c@34.125.143.141 "cd /home/server && chmod +x scripts/setup.sh && ./scripts/setup.sh"
+  deploy:
+    name: Deploy to Server
+    needs: test
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Deploy to server
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.VM_ACTIONS_IP }}
+        username: ${{ secrets.VM_ACTIONS_USERNAME }}
+        key: ${{ secrets.VM_ACTIONS_PRIVATE_KEY }}
+        script: |
+          echo "🚀 Starting deployment to ${{ github.event.inputs.environment || 'production' }}"
+          echo "Deploying to ${{ github.event.inputs.environment || 'production' }}"
+          cd ..
+          cd server/
+          cd summer-intern-2025/
+          # Create new tmux session or use existing one
+          tmux new-session -d -s server_session || true
+          # Send commands to the session
+          tmux send-keys -t server_session 'git pull origin main' C-m
+          tmux kill-session -t server_session
+          echo "Git pull and server started in tmux session 'server_session'"
+          echo "✅ Deployment completed successfully!"
+          echo "🔗 Application should be available at http://${{ secrets.VM_ACTIONS_IP }}:8080"
