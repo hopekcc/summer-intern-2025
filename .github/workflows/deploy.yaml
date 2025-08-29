@@ -1,4 +1,4 @@
-name: CI/CD Workflow
+name: CI Only (Test Server Code)
 
 on:
   push:
@@ -9,18 +9,11 @@ on:
     branches: [ main ]
     paths:
       - 'server/**'
-  workflow_dispatch:  # Allow manual triggering
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'production'
 
 jobs:
   test:
-    name: Run Tests
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
+
     steps:
     - uses: actions/checkout@v3
 
@@ -31,6 +24,7 @@ jobs:
 
     - name: Create virtualenv and install dependencies
       run: |
+        cd server
         python -m venv .venvServer
         source .venvServer/bin/activate
         python -m pip install --upgrade pip
@@ -41,48 +35,7 @@ jobs:
         FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
         FIREBASE_JSON: ${{ secrets.FIREBASE_JSON }}
       run: |
+        cd server
         source .venvServer/bin/activate
         echo "FIREBASE_JSON is set: " ${{ env.FIREBASE_JSON != '' }}
-        if [ -d tests ]; then 
-          pytest tests/ -v
-        else 
-          echo "No tests directory found. Looking for tests in server/tests/..."
-          if [ -d server/tests ]; then
-            cd server && pytest tests/ -v
-          else
-            echo "No tests found. Skipping tests."
-            exit 0
-          fi
-        fi
-
-  deploy:
-    name: Deploy to Server
-    needs: test
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-    - uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
-
-    - name: Deploy to server
-      uses: appleboy/ssh-action@v1.0.0
-      with:
-        host: ${{ secrets.VM_ACTIONS_IP }}
-        username: ${{ secrets.VM_ACTIONS_USERNAME }}
-        key: ${{ secrets.VM_ACTIONS_PRIVATE_KEY }}
-        script: |
-          echo "🚀 Starting deployment to ${{ github.event.inputs.environment || 'production' }}"
-          echo "Deploying to ${{ github.event.inputs.environment || 'production' }}"
-          cd ..
-          cd server/
-          cd summer-intern-2025/
-          # Create new tmux session or use existing one
-          tmux new-session -d -s server_session || true
-          # Send commands to the session
-          tmux send-keys -t server_session 'git pull origin main' C-m
-          tmux kill-session -t server_session
-          echo "Git pull and server started in tmux session 'server_session'"
-          echo "✅ Deployment completed successfully!"
-          echo "🔗 Application should be available at http://${{ secrets.VM_ACTIONS_IP }}:8080"
+        if [ -d tests ]; then pytest tests/; else echo "No tests directory, skipping pytest."; fi
