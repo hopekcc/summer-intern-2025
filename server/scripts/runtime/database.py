@@ -107,7 +107,7 @@ import uuid
 class Playlist(SQLModel, table=True):
    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
    name: str
-   user_id: str = Field(foreign_key="users.id")  # Add this field
+   user_id: int = Field(foreign_key="users.id")  # Add this field
    songs: List["PlaylistSong"] = Relationship(back_populates="playlist")
 
 class PlaylistSong(SQLModel, table=True):
