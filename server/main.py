@@ -24,7 +24,7 @@ from scripts.runtime.database import check_db_connectivity
 from scripts.runtime.websocket_server import start_websocket_server, get_websocket_factory
 from scripts.runtime.paths import get_database_dir
 from scripts.runtime.auth_middleware import get_current_user
-from routers import songs, rooms
+from routers import songs, rooms, playlists
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -96,6 +96,7 @@ app.add_middleware(
 # ===================================================================
 app.include_router(songs.router, prefix="/songs", tags=["songs"])
 app.include_router(rooms.router, prefix="/rooms", tags=["rooms"])
+app.include_router(playlists.router, prefix="/playlists", tags=["playlists"])
 
 # Initialize Firebase and database
 if FIREBASE_JSON:
