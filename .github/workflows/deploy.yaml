@@ -31,7 +31,6 @@ jobs:
 
     - name: Create virtualenv and install dependencies
       run: |
-        cd server
         python -m venv .venvServer
         source .venvServer/bin/activate
         python -m pip install --upgrade pip
@@ -42,10 +41,19 @@ jobs:
         FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
         FIREBASE_JSON: ${{ secrets.FIREBASE_JSON }}
       run: |
-        cd server
         source .venvServer/bin/activate
         echo "FIREBASE_JSON is set: " ${{ env.FIREBASE_JSON != '' }}
-        if [ -d tests ]; then pytest tests/; else echo "No tests directory, skipping pytest."; fi
+        if [ -d tests ]; then 
+          pytest tests/ -v
+        else 
+          echo "No tests directory found. Looking for tests in server/tests/..."
+          if [ -d server/tests ]; then
+            cd server && pytest tests/ -v
+          else
+            echo "No tests found. Skipping tests."
+            exit 0
+          fi
+        fi
 
   deploy:
     name: Deploy to Server
