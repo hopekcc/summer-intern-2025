@@ -1,10 +1,6 @@
 name: CI Only (Test Server Code)
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'server/**'
   pull_request:
     branches: [ main ]
     paths:

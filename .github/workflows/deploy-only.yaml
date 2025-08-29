@@ -33,7 +33,12 @@ jobs:
           cd summer-intern-2025/
           cd server/scripts/setup/
           tmux new-session -d -s server_pull || true
-          tmux send-keys -t server_pull 'git pull origin main && source .venvServer/bin/activate && pip install -r requirements.txt' C-m
+          tmux send-keys -t server_pull 'git pull origin main' C-m
+          tmux send-keys -t server_pull 'cd server/scripts/setup/' C-m
+          tmux send-keys -t server_pull 'cd ..' C-m
+          tmux send-keys -t server_pull 'cd ..' C-m
+          tmux send-keys -t server_pull 'sudo source .venvServer/bin/activate' C-m
+          tmux send-keys -t server_pull 'pip install -r requirements.txt' C-m
 
           echo "Deployment commands sent to tmux session 'server_pull'"
           echo "Deployment completed"
