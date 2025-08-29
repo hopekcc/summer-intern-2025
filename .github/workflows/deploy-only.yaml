@@ -1,0 +1,39 @@
+name: CD - Deploy to Production
+
+on:
+  # Triggers the workflow on a push to the main branch
+  push:
+    branches: [ main ]
+    # Only runs if files inside the 'server/' directory have changed
+    paths:
+      - 'server/**'
+
+jobs:
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest # Uses a standard Linux runner
+
+    steps:
+    - name: Deploy to server
+      # Uses a popular action to run commands over SSH
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        # These secrets must be configured in your GitHub repository settings
+        # under Settings > Secrets and variables > Actions
+        host: ${{ secrets.VM_ACTIONS_IP }}
+        username: ${{ secrets.VM_ACTIONS_USERNAME }}
+        key: ${{ secrets.VM_ACTIONS_PRIVATE_KEY }}
+        
+        # The sequence of commands to run on the server
+        script: |
+          echo "Deploying to ${{ github.event.inputs.environment || 'production' }}"
+
+          cd ..
+          cd server/
+          cd summer-intern-2025/
+          cd server/scripts/setup/
+          tmux new-session -d -s server_pull || true
+          tmux send-keys -t server_pull 'git pull origin main && source .venvServer/bin/activate && pip install -r requirements.txt' C-m
+
+          echo "Deployment commands sent to tmux session 'server_pull'"
+          echo "Deployment completed"
