@@ -1,134 +1,160 @@
+/* CSS Variables for Design System */
+:root {
+  --color-primary: #2b2f78;
+  --color-primary-hover: #1f2456;
+  --color-background: #f9fefc;
+  --color-foreground: #2b2f78;
+  --color-muted: #f0f9f6;
+  --color-muted-foreground: #64748b;
+  --color-border: #e2e8f0;
+  --color-card: #ffffff;
+  --color-accent: #f0f9f6;
+  --color-destructive: #ef4444;
+
+  --border-radius: 0.5rem;
+  --border-radius-lg: 0.75rem;
+  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+
+  --font-sans: system-ui, -apple-system, sans-serif;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+}
+
+/* Reset and Base Styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 
 body {
-    font-family: Arial, sans-serif;
-    margin: 0;
-    background-color: #f9fefc;
-    color: #2b2f78; /* Set default text color to dark blue */
+  font-family: var(--font-sans);
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  line-height: 1.6;
+  min-height: 100vh;
+  font-weight: 500;
 }
 
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+/* Navbar Styles */
 .navbar {
-    display: flex;
-    justify-content: space-between;
-    padding: 1rem 2rem;
-    background-color: #fff;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    font-weight: bold; /* Make navbar text bold */
-    color: #2b2f78;     /* Dark blue navbar text */
+  display: flex;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  background-color: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  font-weight: bold;
+  color: #2b2f78;
 }
-
-.logo {
-    font-size:3rem;       /* Make it larger (default ~1rem) */
-    font-weight: bold;     /* Bold text */
-    color: #2b2f78;        /* Optional: deep blue */
-    letter-spacing: 0.5px; /* Optional: spacing between letters */
-}
-
 
 .nav-links {
-    display: flex;
-    list-style: none;
-    gap: 1rem;
+  display: flex;
+  list-style: none;
+  gap: 1rem;
 }
 
 .nav-links a {
-    text-decoration: none;
-    color: #2b2f78; /* Dark blue links */
-    font-weight: bold;
+  text-decoration: none;
+  color: #2b2f78;
+  font-weight: bold;
 }
 
-.btn, .btn-primary {
-    padding: 0.5rem 1rem;
-    text-decoration: none;
-    border-radius: 4px;
-    font-weight: bold;
-}
-
-.btn-primary {
-    background-color: #2b2f78;
-    color: white;
-}
-
+/* Welcome Section */
 .welcome-section {
-    display: flex;
-    justify-content: space-between;
-    padding: 2rem;
+  display: flex;
+  justify-content: space-between;
+  padding: 2rem;
 }
 
 .welcome-text {
-    font-size:1rem;
-    color: #2b2f78;
-    font-weight: bold;
+  font-size: 1rem;
+  color: #2b2f78;
+  font-weight: bold;
 }
 
 .welcome-text h1 {
-    font-size:4rem;
-    color: #2b2f78;
-    font-weight: bold;
+  font-size: 4rem;
+  color: #2b2f78;
+  font-weight: bold;
 }
 
 .welcome-text p {
-    font-size: 1.5rem;
-    color: #2b2f78;
-    font-weight: bold;
+  font-size: 1.5rem;
+  color: #2b2f78;
+  font-weight: bold;
 }
 
+/* Screenshot Styles */
 .screenshot img {
-    max-width: 100%;
-    height: auto;
+  max-width: 100%;
+  height: auto;
 }
 
+/* Textarea Styles */
 textarea {
-    font-family: monospace;
-    font-size: 1rem;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    padding: 0.5rem;
-    width: 100%;
-    max-width: 600px;
+  font-family: monospace;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 0.5rem;
+  width: 100%;
+  max-width: 600px;
 }
 
+/* Link Styles */
 a {
-    text-decoration: none;
-    color: #2b2f78;
-    font-weight: bold;
+  text-decoration: none;
+  color: #2b2f78;
+  font-weight: bold;
 }
 
 a:hover {
-    text-decoration: underline;
+  text-decoration: underline;
 }
 
-/* Dropdown styles */
+/* Dropdown Styles */
 .dropdown {
-    position: relative;
-    display: inline-block;
+  position: relative;
+  display: inline-block;
 }
 
 .dropdown-content {
-    display: none;
-    position: absolute;
-    background-color: #fff;
-    min-width: 160px;
-    box-shadow: 0px 8px 16px rgba(0,0,0,0.2);
-    z-index: 1;
+  display: none;
+  position: absolute;
+  background-color: #fff;
+  min-width: 160px;
+  box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.2);
+  z-index: 1;
 }
 
 .dropdown-content a {
-    color: #2b2f78;
-    padding: 0.5rem 1rem;
-    text-decoration: none;
-    display: block;
+  color: #2b2f78;
+  padding: 0.5rem 1rem;
+  text-decoration: none;
+  display: block;
 }
 
 .dropdown-content a:hover {
-    background-color: #f1f1f1;
+  background-color: #f1f1f1;
 }
 
 .dropdown:hover .dropdown-content {
-    display: block;
+  display: block;
 }
 
+/* PDF Widget Styles */
 .pdf-widget {
-  width: 600px;            /* subject to change */
+  width: 600px;
   height: 800px;
   border: 1px solid #ccc;
   margin: 1rem auto;
@@ -137,7 +163,7 @@ a:hover {
 }
 
 .pdf-widget canvas {
-  flex: 1;                /* stretch to fill the widget’s height */
+  flex: 1;
   width: 100%;
 }
 
@@ -152,12 +178,13 @@ a:hover {
   margin: 0 0.5rem;
 }
 
+/* Song List Styles */
 .song-list {
-  padding-left: 1.2rem; /* Keep indention and save the spots*/
+  padding-left: 1.2rem;
 }
 
 .song-list li {
-  margin-bottom: 0.5rem; /* leave space below for each songs */
+  margin-bottom: 0.5rem;
 }
 
 .song-list li a {
@@ -170,13 +197,14 @@ a:hover {
   text-decoration: underline;
 }
 
+/* Result Count Styles */
 .result-count {
   margin: 0.25rem 0 0.5rem;
   font-size: 0.95rem;
   opacity: 0.9;
 }
 
-/* Layout: 50/50 split */
+/* Auth Wrapper Styles */
 .auth-wrapper {
   min-height: 100vh;
   display: flex;
@@ -196,7 +224,7 @@ a:hover {
   overflow: hidden;
 }
 
-/* LEFT SIDE - Illustration */
+/* Auth Aside Styles */
 .auth-aside {
   flex: 1;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -223,7 +251,7 @@ a:hover {
   object-fit: contain;
 }
 
-/* Added back the welcome text styling */
+/* Auth Welcome Styles */
 .auth-welcome {
   text-align: center;
   color: white;
@@ -241,7 +269,7 @@ a:hover {
   line-height: 1.5;
 }
 
-/* RIGHT SIDE - Form */
+/* Auth Form Container Styles */
 .auth-form-container {
   flex: 1;
   display: flex;
@@ -255,6 +283,7 @@ a:hover {
   max-width: none;
 }
 
+/* Auth Title Styles */
 .auth-title {
   font-size: 1.75rem;
   font-weight: 600;
@@ -263,6 +292,7 @@ a:hover {
   text-align: left;
 }
 
+/* Auth Error Styles */
 .auth-error {
   background-color: #fee2e2;
   color: #dc2626;
@@ -276,24 +306,28 @@ a:hover {
   display: block;
 }
 
+/* Login Form Styles */
 .login-form {
   display: flex;
   flex-direction: column;
   gap: 2rem;
 }
 
+/* Form Group Styles */
 .form-group {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
+/* Input Label Styles */
 .input-label {
   font-weight: 600;
   color: #1f2937;
   font-size: 1rem;
 }
 
+/* Input Group Styles */
 .input-group {
   position: relative;
 }
@@ -315,6 +349,7 @@ a:hover {
   background-color: white;
 }
 
+/* Toggle Pass Styles */
 .toggle-pass {
   position: absolute;
   right: 1rem;
@@ -332,29 +367,6 @@ a:hover {
   color: #1f2937;
 }
 
-.btn-primary {
-  background: #3b4f87;
-  color: white;
-  border: none;
-  padding: 1rem 1.5rem;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  margin-top: 1rem;
-}
-
-.btn-primary:hover {
-  background: #2d3a66;
-  transform: none;
-  box-shadow: none;
-}
-
-.btn-primary:active {
-  transform: none;
-}
-
 /* Responsive Design */
 @media (max-width: 768px) {
   .auth-card {
@@ -362,17 +374,17 @@ a:hover {
     margin: 1rem;
     min-height: auto;
   }
-  
+
   .auth-aside {
     min-height: 300px;
   }
-  
+
   .auth-form-container {
     padding: 2rem 1.5rem;
     align-items: center;
     justify-content: center;
   }
-  
+
   .auth-title {
     text-align: center;
   }

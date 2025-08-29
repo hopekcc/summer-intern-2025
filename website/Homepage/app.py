@@ -258,6 +258,69 @@ def song_list():
     return render_template("songs.html")
 
 # -----------------------------------------------------------------------------
+# Playlist page
+# -----------------------------------------------------------------------------
+@app.route("/playlist")
+def playlist():
+    return render_template("playlist.html")
+
+@app.route('/api/playlists', methods=['POST'])
+def create_playlist():
+    """Save a new playlist (requires authentication)"""
+    try:
+        # Get the authorization token from the request
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Authorization token required'}), 401
+            
+        # Extract token and verify with Firebase (you may already have this logic)
+        token = auth_header.split('Bearer ')[1]
+        # Add your Firebase token verification here
+        
+        data = request.get_json()
+        if not data or 'name' not in data or 'tracks' not in data:
+            return jsonify({'error': 'Missing playlist name or tracks'}), 400
+            
+        playlist_name = data['name']
+        tracks = data['tracks']
+        
+        # Here you would save the playlist to your database
+        # For now, just return success
+        playlist_id = f"playlist_{int(time.time())}"  # Simple ID generation
+        
+        return jsonify({
+            'success': True,
+            'playlist_id': playlist_id,
+            'message': f'Playlist "{playlist_name}" saved with {len(tracks)} tracks'
+        }), 201
+        
+    except Exception as e:
+        return jsonify({'error': 'Failed to save playlist'}), 500
+
+
+@app.route('/api/playlists', methods=['GET'])
+def get_playlists():
+    """Get user's playlists (requires authentication)"""
+    try:
+        # Get the authorization token from the request
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Authorization token required'}), 401
+            
+        # Extract token and verify with Firebase
+        token = auth_header.split('Bearer ')[1]
+        # Add your Firebase token verification here
+        
+        # Here you would fetch playlists from your database
+        # For now, return empty list
+        playlists = []
+        
+        return jsonify(playlists), 200
+        
+    except Exception as e:
+        return jsonify({'error': 'Failed to fetch playlists'}), 500
+
+# -----------------------------------------------------------------------------
 # Dashboard (optional, redirect only)
 # -----------------------------------------------------------------------------
 @app.route("/dashboard")

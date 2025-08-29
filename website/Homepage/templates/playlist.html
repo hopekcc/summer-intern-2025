@@ -1,0 +1,692 @@
+{% extends "base.html" %}
+
+{% block title %}PlaylistMaker - HOPEKCC Chord Pro Tool{% endblock %}
+
+{% block head %}
+    <!-- Playlist-specific styles inline to reduce clutter in main CSS file -->
+    <style>
+        /* Playlist-specific styles */
+        .main-content {
+            padding: 2rem 0;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 2rem;
+        }
+        .hero {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .hero h2 {
+            color: #2b2f78;
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        .hero p {
+            color: #64748b;
+            font-size: 1.125rem;
+        }
+        .card {
+            background: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .search-card {
+            border: 2px solid #e2e8f0;
+        }
+        .search-controls {
+            margin-bottom: 1rem;
+        }
+        .search-input-wrapper {
+            position: relative;
+            margin-bottom: 1rem;
+        }
+        .search-icon {
+            position: absolute;
+            left: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 1.25rem;
+            height: 1.25rem;
+            color: #64748b;
+        }
+        .search-input {
+            width: 100%;
+            padding: 0.75rem 0.75rem 0.75rem 2.5rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: #2b2f78;
+        }
+        .search-tabs {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .tab-btn {
+            padding: 0.5rem 1rem;
+            border: 2px solid #e2e8f0;
+            background: white;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        .tab-btn.active {
+            background: #2b2f78;
+            color: white;
+            border-color: #2b2f78;
+        }
+        .tab-btn:hover:not(.active) {
+            border-color: #2b2f78;
+            color: #2b2f78;
+        }
+        .tracks-section h3 {
+            color: #2b2f78;
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        .tracks-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .track-card {
+            padding: 1rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .track-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .track-content {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .track-cover {
+            width: 3rem;
+            height: 3rem;
+            border-radius: 0.5rem;
+            object-fit: cover;
+        }
+        .track-info {
+            flex: 1;
+        }
+        .track-title {
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 0.25rem;
+        }
+        .track-artist {
+            color: #64748b;
+            margin-bottom: 0.5rem;
+        }
+        .track-meta {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .badge {
+            background: #f1f5f9;
+            color: #475569;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .duration {
+            color: #64748b;
+            font-size: 0.875rem;
+        }
+        .track-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .play-btn {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+        }
+        .play-btn:hover {
+            background: #f1f5f9;
+        }
+        .btn-primary {
+            background: #2b2f78;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: background-color 0.2s;
+        }
+        .btn-primary:hover {
+            background: #1e2563;
+        }
+        .btn-primary svg {
+            width: 1rem;
+            height: 1rem;
+        }
+        .playlist-section {
+            position: sticky;
+            top: 2rem;
+            height: fit-content;
+        }
+        .playlist-card {
+            border: 2px solid #2b2f78;
+        }
+        .playlist-header {
+            margin-bottom: 1.5rem;
+        }
+        .label {
+            display: block;
+            color: #374151;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+        .playlist-name-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+        .playlist-name-input:focus {
+            outline: none;
+            border-color: #2b2f78;
+        }
+        .playlist-title-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .playlist-title-row h3 {
+            color: #2b2f78;
+            font-weight: 600;
+        }
+        .badge-outline {
+            border: 1px solid #2b2f78;
+            color: #2b2f78;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .playlist-content {
+            min-height: 200px;
+            margin-bottom: 1.5rem;
+        }
+        .empty-playlist {
+            text-align: center;
+            padding: 2rem 1rem;
+            color: #64748b;
+        }
+        .empty-icon {
+            width: 3rem;
+            height: 3rem;
+            margin: 0 auto 1rem;
+            opacity: 0.5;
+        }
+        .empty-subtitle {
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+        }
+        .playlist-actions {
+            border-top: 1px solid #e2e8f0;
+            padding-top: 1rem;
+        }
+        .save-btn {
+            width: 100%;
+            justify-content: center;
+            margin-bottom: 0.75rem;
+        }
+        .total-duration {
+            text-align: center;
+            color: #64748b;
+            font-size: 0.875rem;
+        }
+        .hidden {
+            display: none;
+        }
+        .search-results {
+            border-top: 1px solid #e2e8f0;
+            padding-top: 1rem;
+            margin-top: 1rem;
+        }
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .playlist-section {
+                position: static;
+            }
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="container main-content">
+    <div class="grid">
+        <!-- Search and Browse Section -->
+        <div class="search-section">
+            <div class="hero">
+                <h2>Discover Your Next Favorite Track</h2>
+                <p>Search through thousands of tracks by title, artist, or ID to create the perfect playlist.</p>
+            </div>
+            <!-- Search Controls -->
+            <div class="card search-card">
+                <div class="search-controls">
+                    <div class="search-input-wrapper">
+                        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/>
+                            <path d="m21 21-4.35-4.35"/>
+                        </svg>
+                        <input type="text" id="searchInput" class="search-input" placeholder="Search by title...">
+                    </div>
+                    <div class="search-tabs">
+                        <button class="tab-btn active" data-type="title">Title</button>
+                        <button class="tab-btn" data-type="artist">Artist</button>
+                        <button class="tab-btn" data-type="id">ID</button>
+                    </div>
+                </div>
+                <div id="searchResults" class="search-results hidden"></div>
+            </div>
+            <!-- Track Results -->
+            <div class="tracks-section">
+                <h3 id="tracksTitle">Browse Tracks</h3>
+                <div id="tracksList" class="tracks-list">
+                    {% for track in tracks %}
+                    <div class="card track-card" data-track-id="{{ track.id }}">
+                        <div class="track-content">
+                            <img src="{{ track.cover }}" alt="{{ track.title }} cover" class="track-cover">
+                            <div class="track-info">
+                                <h4 class="track-title">{{ track.title }}</h4>
+                                <p class="track-artist">{{ track.artist }}</p>
+                                <div class="track-meta">
+                                    <span class="badge">{{ track.id }}</span>
+                                    <span class="duration">{{ track.duration }}</span>
+                                </div>
+                            </div>
+                            <div class="track-actions">
+                                <button class="btn-icon play-btn">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polygon points="5,3 19,12 5,21"/>
+                                    </svg>
+                                </button>
+                                <button class="btn-primary add-btn" data-track='{{ track | tojson }}'>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="12" y1="5" x2="12" y2="19"/>
+                                        <line x1="5" y1="12" x2="19" y2="12"/>
+                                    </svg>
+                                    Add
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        <!-- Playlist Section -->
+        <div class="playlist-section">
+            <div class="card playlist-card">
+                <div class="playlist-header">
+                    <label for="playlistName" class="label">Playlist Name</label>
+                    <input type="text" id="playlistName" class="playlist-name-input" value="My New Playlist">
+                </div>
+                <div class="playlist-title-row">
+                    <h3>Current Playlist</h3>
+                    <span id="trackCount" class="badge-outline">0 tracks</span>
+                </div>
+                <div id="playlistContent" class="playlist-content">
+                    <div class="empty-playlist">
+                        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 18V5l12-2v13"/>
+                            <circle cx="6" cy="18" r="3"/>
+                            <circle cx="18" cy="16" r="3"/>
+                        </svg>
+                        <p>No tracks added yet</p>
+                        <p class="empty-subtitle">Search and add tracks to get started</p>
+                    </div>
+                </div>
+                <div id="playlistActions" class="playlist-actions hidden">
+                    <button class="btn-primary save-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                        </svg>
+                        Save Playlist
+                    </button>
+                    <p id="totalDuration" class="total-duration">Total duration: 0:00</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+    // Import Firebase auth from your existing config
+    import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
+    import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+
+    let currentUser = null;
+    let idToken = null;
+
+    // Wait for auth state
+    onAuthStateChanged(auth, async (user) => {
+        currentUser = user;
+        if (user) {
+            idToken = await user.getIdToken(true);
+            // Initialize playlist functionality after auth
+            initializePlaylist();
+        }
+    });
+
+    function initializePlaylist() {
+        const searchInput = document.getElementById('searchInput');
+        const searchResults = document.getElementById('searchResults');
+        const tracksList = document.getElementById('tracksList');
+        const tracksTitle = document.getElementById('tracksTitle');
+        const tabButtons = document.querySelectorAll('.tab-btn');
+        
+        let currentSearchType = 'title';
+        let playlist = [];
+        
+        // Tab switching
+        tabButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                tabButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentSearchType = btn.dataset.type;
+                
+                // Update placeholder
+                const placeholders = {
+                    title: 'Search by title...',
+                    artist: 'Search by artist...',
+                    id: 'Search by ID...'
+                };
+                searchInput.placeholder = placeholders[currentSearchType];
+            });
+        });
+
+        // Search functionality
+        let searchTimeout;
+        searchInput.addEventListener('input', () => {
+            clearTimeout(searchTimeout);
+            const query = searchInput.value.trim();
+            
+            if (query.length < 2) {
+                searchResults.classList.add('hidden');
+                return;
+            }
+            
+            searchTimeout = setTimeout(() => {
+                performSearch(query, currentSearchType);
+            }, 300);
+        });
+
+        async function performSearch(query, searchType) {
+            if (!idToken) {
+                console.warn('No auth token available');
+                return;
+            }
+
+            try {
+                // Use your existing songs API endpoint with search parameter
+                const response = await fetch(`/songs/?search=${encodeURIComponent(query)}&limit=50`, {
+                    headers: {
+                        'Authorization': `Bearer ${idToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Search failed: ${response.status}`);
+                }
+
+                const songs = await response.json();
+                displaySearchResults(songs);
+            } catch (error) {
+                console.error('Search error:', error);
+                searchResults.innerHTML = '<p style="color: #ef4444; padding: 1rem;">Search failed. Please try again.</p>';
+                searchResults.classList.remove('hidden');
+            }
+        }
+
+        function displaySearchResults(songs) {
+            if (!songs || songs.length === 0) {
+                searchResults.innerHTML = '<p style="color: #64748b; padding: 1rem;">No songs found.</p>';
+                searchResults.classList.remove('hidden');
+                return;
+            }
+
+            const resultsHtml = songs.map(song => `
+                <div class="card track-card" data-track-id="${song.id}">
+                    <div class="track-content">
+                        <img src="${song.cover || '/static/images/default-cover.jpg'}" 
+                             alt="${song.title} cover" class="track-cover">
+                        <div class="track-info">
+                            <h4 class="track-title">${song.title}</h4>
+                            <p class="track-artist">${song.artist}</p>
+                            <div class="track-meta">
+                                <span class="badge">${song.id}</span>
+                                <span class="duration">${song.duration || '3:00'}</span>
+                            </div>
+                        </div>
+                        <div class="track-actions">
+                            <button class="btn-icon play-btn" onclick="previewSong('${song.id}')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polygon points="5,3 19,12 5,21"/>
+                                </svg>
+                            </button>
+                            <button class="btn-primary add-btn" onclick="addToPlaylist('${song.id}', '${song.title}', '${song.artist}', '${song.cover || ''}', '${song.duration || '3:00'}')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="12" y1="5" x2="12" y2="19"/>
+                                    <line x1="5" y1="12" x2="19" y2="12"/>
+                                </svg>
+                                Add
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            searchResults.innerHTML = resultsHtml;
+            searchResults.classList.remove('hidden');
+        }
+
+        // Load initial songs (browse mode)
+        async function loadBrowseSongs() {
+            if (!idToken) return;
+
+            try {
+                const response = await fetch('/songs/?limit=10&offset=0', {
+                    headers: {
+                        'Authorization': `Bearer ${idToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const songs = await response.json();
+                    displayBrowseSongs(songs);
+                }
+            } catch (error) {
+                console.error('Failed to load browse songs:', error);
+            }
+        }
+
+        function displayBrowseSongs(songs) {
+            const songsHtml = songs.map(song => `
+                <div class="card track-card" data-track-id="${song.id}">
+                    <div class="track-content">
+                        <img src="${song.cover || '/static/images/default-cover.jpg'}" 
+                             alt="${song.title} cover" class="track-cover">
+                        <div class="track-info">
+                            <h4 class="track-title">${song.title}</h4>
+                            <p class="track-artist">${song.artist}</p>
+                            <div class="track-meta">
+                                <span class="badge">${song.id}</span>
+                                <span class="duration">${song.duration || '3:00'}</span>
+                            </div>
+                        </div>
+                        <div class="track-actions">
+                            <button class="btn-icon play-btn" onclick="previewSong('${song.id}')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polygon points="5,3 19,12 5,21"/>
+                                </svg>
+                            </button>
+                            <button class="btn-primary add-btn" onclick="addToPlaylist('${song.id}', '${song.title}', '${song.artist}', '${song.cover || ''}', '${song.duration || '3:00'}')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="12" y1="5" x2="12" y2="19"/>
+                                    <line x1="5" y1="12" x2="19" y2="12"/>
+                                </svg>
+                                Add
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            tracksList.innerHTML = songsHtml;
+        }
+
+        // Global functions for playlist management
+        window.addToPlaylist = function(id, title, artist, cover, duration) {
+            const track = { id, title, artist, cover, duration };
+            
+            // Check if already in playlist
+            if (playlist.find(t => t.id === id)) {
+                alert('This song is already in your playlist!');
+                return;
+            }
+            
+            playlist.push(track);
+            updatePlaylistDisplay();
+        };
+
+        window.removeFromPlaylist = function(id) {
+            playlist = playlist.filter(t => t.id !== id);
+            updatePlaylistDisplay();
+        };
+
+        window.previewSong = function(songId) {
+            // Open song in new tab using your PDF viewer
+            window.open(`/pdf/view/${songId}`, '_blank');
+        };
+
+        function updatePlaylistDisplay() {
+            const playlistContent = document.getElementById('playlistContent');
+            const trackCount = document.getElementById('trackCount');
+            const playlistActions = document.getElementById('playlistActions');
+            const totalDuration = document.getElementById('totalDuration');
+
+            trackCount.textContent = `${playlist.length} track${playlist.length !== 1 ? 's' : ''}`;
+
+            if (playlist.length === 0) {
+                playlistContent.innerHTML = `
+                    <div class="empty-playlist">
+                        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 18V5l12-2v13"/>
+                            <circle cx="6" cy="18" r="3"/>
+                            <circle cx="18" cy="16" r="3"/>
+                        </svg>
+                        <p>No tracks added yet</p>
+                        <p class="empty-subtitle">Search and add tracks to get started</p>
+                    </div>
+                `;
+                playlistActions.classList.add('hidden');
+            } else {
+                const playlistHtml = playlist.map(track => `
+                    <div class="card track-card" style="margin-bottom: 0.5rem;">
+                        <div class="track-content">
+                            <img src="${track.cover}" alt="${track.title} cover" class="track-cover">
+                            <div class="track-info">
+                                <h4 class="track-title">${track.title}</h4>
+                                <p class="track-artist">${track.artist}</p>
+                                <span class="duration">${track.duration}</span>
+                            </div>
+                            <button class="btn-icon" onclick="removeFromPlaylist('${track.id}')" style="color: #ef4444;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="18" y1="6" x2="6" y2="18"/>
+                                    <line x1="6" y1="6" x2="18" y2="18"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+                
+                playlistContent.innerHTML = playlistHtml;
+                playlistActions.classList.remove('hidden');
+                
+                // Calculate total duration (simplified)
+                const totalMinutes = playlist.length * 3; // Rough estimate
+                totalDuration.textContent = `Total duration: ${Math.floor(totalMinutes / 60)}:${(totalMinutes % 60).toString().padStart(2, '0')}`;
+            }
+        }
+
+        // Save playlist functionality
+        document.querySelector('.save-btn').addEventListener('click', async () => {
+            const playlistName = document.getElementById('playlistName').value.trim();
+            
+            if (!playlistName) {
+                alert('Please enter a playlist name');
+                return;
+            }
+            
+            if (playlist.length === 0) {
+                alert('Please add some tracks to your playlist');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/playlists', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${idToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: playlistName,
+                        tracks: playlist
+                    })
+                });
+
+                if (response.ok) {
+                    alert('Playlist saved successfully!');
+                    // Reset playlist
+                    playlist = [];
+                    updatePlaylistDisplay();
+                    document.getElementById('playlistName').value = 'My New Playlist';
+                } else {
+                    throw new Error('Failed to save playlist');
+                }
+            } catch (error) {
+                console.error('Save error:', error);
+                alert('Failed to save playlist. Please try again.');
+            }
+        });
+
+        // Load initial browse songs
+        loadBrowseSongs();
+        updatePlaylistDisplay();
+    }
+</script>
+{% endblock %}
