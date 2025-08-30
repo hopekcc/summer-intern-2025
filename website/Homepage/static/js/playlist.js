@@ -77,72 +77,90 @@ window.addEventListener('DOMContentLoaded', () => {
     saveBtn.addEventListener('click', savePlaylist);
   }
 
-  async function performSearch(query, type) {
-    console.log('🔍 Starting search for:', query, 'type:', type);
-    console.log('📦 searchResults element:', searchResults);
-    console.log('📦 searchResults classes before show:', searchResults.className);
-    searchResults.classList.remove('hidden');
-    searchResults.style.display = 'block';
-    console.log('🔍 Forced show - classes now:', searchResults.className);
-    console.log('🔍 Forced show - display now:', searchResults.style.display);
-    console.log('📦 searchResults classes after show:', searchResults.className);
-    console.log('📦 searchResults display style:', window.getComputedStyle(searchResults).display);
-    
-    // Show loading state
-    searchResults.innerHTML = '<p style="color:#64748b; padding:1rem;">Searching...</p>';
-    
-    try {
-      if (!idToken) {
-        throw new Error('Not authenticated - please sign in');
-      }
-
-      const url = `http://34.125.143.141:8000/songs/list?search=${encodeURIComponent(query)}&limit=50`;
-      console.log('🌐 Making request to:', url);
-      
-      const res = await fetch(url, {
-        headers: { 
-          'Authorization': `Bearer ${idToken}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      console.log('📡 Response status:', res.status);
-      console.log('📡 Response headers:', Object.fromEntries(res.headers.entries()));
-      
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error('❌ API Error:', res.status, errorText);
-        throw new Error(`API returned ${res.status}: ${errorText}`);
-      }
-      
-        const data = await res.json();
-        console.log('✅ Raw API response:', data); // Log the actual structure first
-
-        // Extract the songs array from the response object
-        // The actual property name might be 'songs', 'results', 'items', or 'data'
-        const songs = data.songs || data.results || data.items || data.data || data;
-
-        // Ensure it's an array
-        if (!Array.isArray(songs)) {
-        console.error('❌ Expected array but got:', typeof songs, songs);
-        throw new Error('Invalid response format - not an array');
-        }
-
-        console.log('✅ Search results:', songs.length, 'songs found');
-        console.log('📄 First few results:', songs.slice(0, 3));
-
-        renderTrackCards(songs, searchResults);
-      
-    } catch (err) {
-      console.error('❌ Search error:', err);
-      searchResults.innerHTML = `
-        <div style="color:#ef4444; padding:1rem; border:1px solid #fecaca; border-radius:0.5rem; background:#fef2f2;">
-          <strong>Search failed:</strong> ${err.message}
-          <br><small>Check the console for more details</small>
-        </div>
-      `;
+async function performSearch(query, type) {
+  console.log('🔍 Starting search for:', query, 'type:', type);
+  console.log('📦 searchResults element:', searchResults);
+  console.log('📦 searchResults classes before show:', searchResults.className);
+  searchResults.classList.remove('hidden');
+  searchResults.style.display = 'block';
+  console.log('🔍 Forced show - classes now:', searchResults.className);
+  console.log('🔍 Forced show - display now:', searchResults.style.display);
+  console.log('📦 searchResults classes after show:', searchResults.className);
+  console.log('📦 searchResults display style:', window.getComputedStyle(searchResults).display);
+  
+  // Show loading state
+  searchResults.innerHTML = '<p style="color:#64748b; padding:1rem;">Searching...</p>';
+  
+  try {
+    if (!idToken) {
+      throw new Error('Not authenticated - please sign in');
     }
+
+    let url;
+    
+    // Choose endpoint based on search type
+    switch (type) {
+      case 'id':
+        // Use the ID-specific endpoint
+        url = `http://34.125.143.141:8000/songs/search/id?id=${encodeURIComponent(query)}&limit=50`;
+        break;
+      case 'title':
+      case 'artist':
+        // Use the text search endpoint for title and artist
+        url = `http://34.125.143.141:8000/songs/search/substring?q=${encodeURIComponent(query)}&limit=50`;
+        break;
+      default:
+        // Fallback to the current general search
+        url = `http://34.125.143.141:8000/songs/list?search=${encodeURIComponent(query)}&limit=50`;
+        break;
+    }
+    
+    console.log('🌐 Making request to:', url);
+    
+    const res = await fetch(url, {
+      headers: { 
+        'Authorization': `Bearer ${idToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log('📡 Response status:', res.status);
+    console.log('📡 Response headers:', Object.fromEntries(res.headers.entries()));
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error('❌ API Error:', res.status, errorText);
+      throw new Error(`API returned ${res.status}: ${errorText}`);
+    }
+    
+    const data = await res.json();
+    console.log('✅ Raw API response:', data); // Log the actual structure first
+
+    // Extract the songs array from the response object
+    // The actual property name might be 'songs', 'results', 'items', or 'data'
+    const songs = data.songs || data.results || data.items || data.data || data;
+
+    // Ensure it's an array
+    if (!Array.isArray(songs)) {
+      console.error('❌ Expected array but got:', typeof songs, songs);
+      throw new Error('Invalid response format - not an array');
+    }
+
+    console.log('✅ Search results:', songs.length, 'songs found');
+    console.log('📄 First few results:', songs.slice(0, 3));
+
+    renderTrackCards(songs, searchResults);
+    
+  } catch (err) {
+    console.error('❌ Search error:', err);
+    searchResults.innerHTML = `
+      <div style="color:#ef4444; padding:1rem; border:1px solid #fecaca; border-radius:0.5rem; background:#fef2f2;">
+        <strong>Search failed:</strong> ${err.message}
+        <br><small>Check the console for more details</small>
+      </div>
+    `;
   }
+}
 
   async function loadBrowseSongs() {
     console.log('📚 Loading browse songs...');
