@@ -112,8 +112,13 @@ def join_room():
 
 # LOGIN PAGE
 @app.route('/login')
-def login_page():
+def login():
     return render_template('login.html')
+
+# SIGN IN PAGE
+@app.route("/signup")
+def signup():
+    return render_template("signup.html")
 
 # TEST SUCCESS FROM ROOM
 @app.route('/rooms/<room_id>')
