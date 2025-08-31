@@ -1,2 +1,6 @@
 /.vscode/
 .DS_store.DS_Store
+
+# Firebase / service keys
+**/serviceAccountKey.json
+*.secret.json
