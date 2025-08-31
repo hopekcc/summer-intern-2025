@@ -105,7 +105,7 @@ async def render_pdf_with_chordpro_or_fallback(cho_path: str, pdf_path: str, con
     song_name = os.path.basename(cho_path)
     
     if exe and os.path.exists(exe):
-        print(f"      🎼 Using ChordPro to render PDF...", end=" ")
+        print(f"Using ChordPro to render PDF...", end=" ")
         os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -118,31 +118,31 @@ async def render_pdf_with_chordpro_or_fallback(cho_path: str, pdf_path: str, con
                 try:
                     with fitz.open(pdf_path) as doc:
                         page_count = doc.page_count
-                        print(f"✅ ({page_count} pages)")
+                        print(f"({page_count} pages)")
                         return page_count
                 except Exception as e:
-                    print(f"❌ PDF validation failed: {e}")
+                    print(f"PDF validation failed: {e}")
             else:
                 stderr_msg = err.decode(errors='ignore')[:200] if err else "No error output"
-                print(f"❌ ChordPro failed (code {proc.returncode})")
-                print(f"         Error: {stderr_msg}")
-                print(f"      🔄 Falling back to simple renderer...")
+                print(f"ChordPro failed (code {proc.returncode})")
+                print(f"Error: {stderr_msg}")
+                print(f"Falling back to simple renderer...")
         except Exception as e:
-            print(f"❌ Failed to run ChordPro: {e}")
-            print(f"      🔄 Falling back to simple renderer...")
+            print(f"Failed to run ChordPro: {e}")
+            print(f"Falling back to simple renderer...")
     else:
         if exe:
-            print(f"      ⚠️  ChordPro not found at {exe}, using fallback renderer...", end=" ")
+            print(f"ChordPro not found at {exe}, using fallback renderer...", end=" ")
         else:
-            print(f"      📝 Using simple text renderer...", end=" ")
+            print(f"Using simple text renderer...", end=" ")
     
     # Fallback renderer
     try:
         page_count = await asyncio.to_thread(render_pdf_from_text, content, pdf_path)
-        print(f"✅ ({page_count} pages)")
+        print(f"({page_count} pages)")
         return page_count
     except Exception as e:
-        print(f"❌ Fallback renderer failed: {e}")
+        print(f"Fallback renderer failed: {e}")
         return 1  # Default to 1 page if everything fails
 
 # ============================================================================
@@ -156,7 +156,7 @@ def render_webp_from_pdf(pdf_path: str, out_dir: str, scale: float = 2.0, qualit
     try:
         with fitz.open(pdf_path) as doc:
             page_count = doc.page_count
-            print(f"      🖼️  Generating {page_count} WebP images...", end=" ")
+            print(f"Generating {page_count} WebP images...", end=" ")
             
             for i, page in enumerate(doc, start=1):
                 mat = fitz.Matrix(scale, scale)
@@ -165,10 +165,10 @@ def render_webp_from_pdf(pdf_path: str, out_dir: str, scale: float = 2.0, qualit
                 out_path = os.path.join(out_dir, f"page_{i}.webp")
                 img.save(out_path, format="WEBP", quality=quality)
             
-            print(f"✅")
+            print(f"done")
             
     except Exception as e:
-        print(f"❌ Image generation failed: {e}")
+        print(f"Image generation failed: {e}")
         raise
 
 # ============================================================================
@@ -179,16 +179,16 @@ async def setup_search_infrastructure() -> bool:
     """Set up PostgreSQL search extensions and indexes"""
     db_url = get_database_url()
     if not db_url.startswith("postgresql"):
-        print("⏭️  Skipping search infrastructure - not using PostgreSQL")
+        print("Skipping search infrastructure - not using PostgreSQL")
         return True
     
     # Check if search infrastructure should be enabled
     enable_search = os.getenv("ENABLE_SEARCH_INDEXES", "true").lower() in ("1", "true", "yes", "on")
     if not enable_search:
-        print("⏭️  Skipping search infrastructure - disabled by ENABLE_SEARCH_INDEXES")
+        print("Skipping search infrastructure - disabled by ENABLE_SEARCH_INDEXES")
         return True
     
-    print_section_header("🔍 Setting up search infrastructure")
+    print_section_header("Setting up search infrastructure")
     
     # Configuration from environment
     concurrent = os.getenv("CONCURRENT_INDEXES", "true").lower() in ("1", "true", "yes", "on")
@@ -238,16 +238,16 @@ async def setup_search_infrastructure() -> bool:
                 ac = conn.execution_options(isolation_level="AUTOCOMMIT")
                 
                 # Enable extension
-                print(f"   🔌 Enabling pg_trgm extension...", end=" ")
+                print(f"   Enabling pg_trgm extension...", end=" ")
                 try:
                     await ac.execute(text(enable_ext))
-                    print("✅")
+                    print("done")
                 except Exception as e:
-                    print(f"❌ {e}")
+                    print(f"not done {e}")
                     return False
                 
                 # Create trigram indexes
-                print(f"   📊 Creating trigram indexes...")
+                print(f"   Creating trigram indexes...")
                 for stmt, desc in [
                     (idx_title, "title trigram index"),
                     (idx_artist, "artist trigram index"),
@@ -256,12 +256,12 @@ async def setup_search_infrastructure() -> bool:
                     print(f"      - {desc}...", end=" ")
                     try:
                         await ac.execute(text(stmt))
-                        print("✅")
+                        print("done")
                     except Exception as e:
                         if "already exists" in str(e).lower():
-                            print("✅ (exists)")
+                            print("done (exists)")
                         else:
-                            print(f"⚠️  {e}")
+                            print(f"not done {e}")
                 
                 # Create FTS infrastructure
                 if fts_statements:
@@ -278,24 +278,24 @@ async def setup_search_infrastructure() -> bool:
                         
                         try:
                             await ac.execute(text(stmt))
-                            print("✅")
+                            print("done")
                         except Exception as e:
                             if "already exists" in str(e).lower():
-                                print("✅ (exists)")
+                                print("done (exists)")
                             else:
-                                print(f"⚠️  {e}")
+                                print(f"not done {e}")
             
-            print("✅ Search infrastructure setup completed")
+            print("Search infrastructure setup completed")
             return True
             
         except Exception as e:
-            print(f"❌ Database connection attempt {attempt + 1} failed: {e}")
+            print(f"Database connection attempt {attempt + 1} failed: {e}")
             if attempt < max_retries - 1:
-                print(f"   🔄 Retrying in {retry_delay} seconds...")
+                print(f"🔄 Retrying in {retry_delay} seconds...")
                 await asyncio.sleep(retry_delay)
                 retry_delay *= 2
             else:
-                print("❌ Failed to set up search infrastructure after all retries")
+                print("Failed to set up search infrastructure after all retries")
                 return False
     
     return False
@@ -352,7 +352,7 @@ async def upsert_song(
             )
             session.add(obj)
     except Exception as e:
-        print(f"         ❌ Database upsert error: {e}")
+        print(f"Database upsert error: {e}")
         raise
 
 # ============================================================================
@@ -367,15 +367,15 @@ async def process_one_song(
     regen_assets: bool = False
 ) -> Tuple[str, bool]:
     """Process a single song: generate PDF, images, and update database"""
-    print(f"   🎵 Processing song {song_id}: {filename}")
+    print(f"Processing song {song_id}: {filename}")
     
     cho_path = os.path.join(paths['songs_dir'], filename)
     if not os.path.exists(cho_path):
-        print(f"      ❌ ChordPro file not found: {cho_path}")
+        print(f"ChordPro file not found: {cho_path}")
         return song_id, False
 
     # Parse metadata
-    print(f"      📖 Parsing ChordPro metadata...", end=" ")
+    print(f"Parsing ChordPro metadata...", end=" ")
     default_title = os.path.splitext(filename)[0]
     md = parse_chordpro_metadata(cho_path, default_title)
     title = md.get("title") or default_title
@@ -384,11 +384,11 @@ async def process_one_song(
     tempo_meta = md.get("tempo")
     genre_meta = md.get("genre")
     language_meta = md.get("language")
-    print(f"✅")
-    print(f"         Title: {title}")
-    print(f"         Artist: {artist}")
+    print(f"done")
+    print(f"Title: {title}")
+    print(f"Artist: {artist}")
     if key_meta:
-        print(f"         Key: {key_meta}")
+        print(f"Key: {key_meta}")
 
     # Setup paths
     pdf_path = os.path.join(paths['songs_pdf_dir'], f"{song_id}.pdf")
@@ -397,17 +397,17 @@ async def process_one_song(
     # Check if PDF generation is needed
     need_pdf = regen_assets or not os.path.exists(pdf_path)
     if need_pdf:
-        print(f"      📄 PDF generation needed")
+        print(f"PDF generation needed")
     else:
-        print(f"      📄 PDF exists, checking validity...", end=" ")
+        print(f"PDF exists, checking validity...", end=" ")
 
     # Read ChordPro content
     try:
         with open(cho_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
-        print(f"      📝 ChordPro content loaded ({len(content)} chars)")
+        print(f"ChordPro content loaded ({len(content)} chars)")
     except Exception as e:
-        print(f"      ❌ Failed to read ChordPro file: {e}")
+        print(f"Failed to read ChordPro file: {e}")
         return song_id, False
 
     # Generate or validate PDF
@@ -416,45 +416,45 @@ async def process_one_song(
         try:
             page_count = await render_pdf_with_chordpro_or_fallback(cho_path, pdf_path, content)
         except Exception as e:
-            print(f"      ❌ PDF generation failed: {e}")
+            print(f"PDF generation failed: {e}")
             return song_id, False
     else:
         try:
             with fitz.open(pdf_path) as doc:
                 page_count = doc.page_count
-                print(f"✅ ({page_count} pages)")
+                print(f"({page_count} pages)")
         except Exception as e:
-            print(f"❌ Invalid, regenerating...")
+            print(f"Invalid, regenerating...")
             try:
                 page_count = await render_pdf_with_chordpro_or_fallback(cho_path, pdf_path, content)
             except Exception as e2:
-                print(f"      ❌ PDF regeneration failed: {e2}")
+                print(f"PDF regeneration failed: {e2}")
                 return song_id, False
 
     # Generate or validate WebP images
     need_images = regen_assets or not (os.path.isdir(img_dir) and 
                                       any(fn.endswith('.webp') for fn in os.listdir(img_dir)))
     if need_images:
-        print(f"      🖼️  Image generation needed")
+        print(f"Image generation needed")
         try:
             await asyncio.to_thread(render_webp_from_pdf, pdf_path, img_dir)
         except Exception as e:
-            print(f"      ❌ Image generation failed: {e}")
+            print(f"Image generation failed: {e}")
             return song_id, False
     else:
         try:
             existing_images = [f for f in os.listdir(img_dir) if f.endswith('.webp')]
-            print(f"      🖼️  Images exist ({len(existing_images)} files) ✅")
+            print(f"Images exist ({len(existing_images)} files) done")
         except Exception:
-            print(f"      🖼️  Image directory issue, regenerating...")
+            print(f"Image directory issue, regenerating...")
             try:
                 await asyncio.to_thread(render_webp_from_pdf, pdf_path, img_dir)
             except Exception as e:
-                print(f"      ❌ Image generation failed: {e}")
+                print(f"Image generation failed: {e}")
                 return song_id, False
 
     # Save to database
-    print(f"      💾 Saving to database...", end=" ")
+    print(f"Saving to database...", end=" ")
     try:
         await upsert_song(
             session,
@@ -468,11 +468,11 @@ async def process_one_song(
             genre=genre_meta,
             language=language_meta,
         )
-        print(f"✅")
-        print(f"   ✅ Song {song_id} completed successfully")
+        print("done")
+        print(f"Song {song_id} completed successfully")
         return song_id, True
     except Exception as e:
-        print(f"❌ Database error: {e}")
+        print(f"Database error: {e}")
         return song_id, False
 
 # ============================================================================
@@ -481,12 +481,12 @@ async def process_one_song(
 
 async def populate_database(paths: Dict[str, str], args) -> int:
     """Main database population function"""
-    print_phase_header("🎵 DATABASE POPULATION")
+    print_phase_header("DATABASE POPULATION")
     
     # Load metadata
     metadata = read_metadata(paths['metadata_path'])
     if not metadata:
-        print("❌ No songs metadata found. Run GitHub sync first.")
+        print("No songs metadata found. Run GitHub sync first.")
         return 1
     
     # Normalize song IDs (remove leading zeros)
@@ -496,22 +496,22 @@ async def populate_database(paths: Dict[str, str], args) -> int:
     normalized_count = len(metadata)
     
     if original_count != normalized_count:
-        print(f"⚠️  ID normalization changed count: {original_count} → {normalized_count}")
+        print(f"ID normalization changed count: {original_count} → {normalized_count}")
         # Save normalized metadata back
         if save_metadata(metadata, paths['metadata_path']):
-            print(f"✅ Saved normalized metadata")
+            print(f"Saved normalized metadata")
     
-    print(f"📊 Found {len(metadata)} songs in metadata")
+    print(f"Found {len(metadata)} songs in metadata")
     
     # Filter songs if specific IDs requested
     if args.songs_only:
         requested_ids = set(args.songs_only.split(','))
         filtered_metadata = {k: v for k, v in metadata.items() if k in requested_ids}
         if not filtered_metadata:
-            print(f"❌ None of the requested song IDs found: {args.songs_only}")
+            print(f"None of the requested song IDs found: {args.songs_only}")
             return 1
         metadata = filtered_metadata
-        print(f"🎯 Processing only {len(metadata)} requested songs")
+        print(f"Processing only {len(metadata)} requested songs")
     
     if args.regen_assets:
         print("🔄 Force regenerating all assets (PDF + WebP)")
@@ -548,7 +548,7 @@ async def populate_database(paths: Dict[str, str], args) -> int:
                         progress.update(ok, f"Song {song_id}")
                         return ok
                     except Exception as e:
-                        print(f"❌ Failed processing {song_id}:{filename} -> {e}")
+                        print(f"Failed processing {song_id}:{filename} -> {e}")
                         progress.update(False, f"Song {song_id}")
                         return False
 
@@ -604,39 +604,39 @@ async def main(argv=None):
     parser.add_argument("--fts-mode", choices=["none", "expr", "column"], help="Full-text search mode")
     args = parser.parse_args(argv)
 
-    print("🎵 DATABASE POPULATION")
+    print("DATABASE POPULATION")
     print("=" * 60)
     
     # Setup environment
     if not setup_environment():
-        print("⚠️  Continuing with system environment variables")
+        print("Continuing with system environment variables")
     
     # Validate environment
     env_ok, issues = validate_environment()
     if not env_ok:
-        print("❌ Environment validation failed:")
+        print("Environment validation failed:")
         for issue in issues:
-            print(f"   - {issue}")
+            print(f"- {issue}")
         return 1
     
     # Get paths and ensure directories exist
     paths = get_data_paths()
     if not ensure_directories(paths):
-        print("❌ Failed to create required directories")
+        print("Failed to create required directories")
         return 1
     
-    print(f"📁 Data directory: {paths['data_dir']}")
-    print(f"🎵 Songs directory: {paths['songs_dir']}")
-    print(f"📄 PDFs directory: {paths['songs_pdf_dir']}")
-    print(f"🖼️  Images directory: {paths['songs_img_dir']}")
+    print(f"Data directory: {paths['data_dir']}")
+    print(f"Songs directory: {paths['songs_dir']}")
+    print(f"PDFs directory: {paths['songs_pdf_dir']}")
+    print(f"Images directory: {paths['songs_img_dir']}")
     
     # Test database connection and create tables
     try:
-        print(f"\n🔌 Testing database connection...")
+        print(f"\nTesting database connection...")
         await create_db_and_tables_async()
-        print(f"✅ Database connection successful")
+        print(f"Database connection successful")
     except Exception as e:
-        print(f"❌ Database connection failed: {e}")
+        print(f"Database connection failed: {e}")
         return 1
     
     # Set up search infrastructure (unless explicitly skipped)
@@ -650,19 +650,19 @@ async def main(argv=None):
             os.environ["FTS_MODE"] = args.fts_mode
         
         if not await setup_search_infrastructure():
-            print("⚠️  Search infrastructure setup failed, but continuing...")
-            print("   (Search functionality may be limited)")
+            print("Search infrastructure setup failed, but continuing...")
+            print("(Search functionality may be limited)")
     else:
-        print("⏭️  Skipping search infrastructure setup (--skip-search)")
+        print("Skipping search infrastructure setup (--skip-search)")
     
     # Run population
     try:
         return await populate_database(paths, args)
     except KeyboardInterrupt:
-        print("\n⚠️  Population interrupted by user")
+        print("\nPopulation interrupted by user")
         return 130
     except Exception as e:
-        print(f"\n💥 Unexpected error: {e}")
+        print(f"\nUnexpected error: {e}")
         import traceback
         traceback.print_exc()
         return 1
@@ -672,8 +672,8 @@ if __name__ == "__main__":
         exit_code = asyncio.run(main())
         sys.exit(exit_code)
     except KeyboardInterrupt:
-        print("\n⚠️  Process interrupted by user")
+        print("\nProcess interrupted by user")
         sys.exit(130)
     except Exception as e:
-        print(f"\n💥 Unexpected error: {e}")
+        print(f"\nUnexpected error: {e}")
         sys.exit(1)

@@ -43,7 +43,7 @@ def check_prerequisites() -> Tuple[bool, List[str]]:
         ("sqlalchemy", "SQLAlchemy"),
         ("asyncpg", "asyncpg"),
         ("httpx", "HTTPX"),
-        ("pillow", "Pillow"),
+        ("PIL", "Pillow"),
         ("fitz", "PyMuPDF"),
         ("reportlab", "ReportLab"),
         ("dotenv", "python-dotenv")
@@ -59,12 +59,12 @@ def check_prerequisites() -> Tuple[bool, List[str]]:
 
 def run_diagnostics() -> bool:
     """Run database connection diagnostics"""
-    print_section_header("🧪 Running diagnostics")
+    print_section_header("[DIAG] Running diagnostics")
     
     try:
         test_script = SCRIPT_DIR / "test_db_connection.py"
         if not test_script.exists():
-            print("⚠️  Diagnostic script not found, skipping...")
+            print("[WARN] Diagnostic script not found, skipping...")
             return True
         
         result = subprocess.run(
@@ -75,10 +75,10 @@ def run_diagnostics() -> bool:
         )
         
         if result.returncode == 0:
-            print("✅ All diagnostic tests passed")
+            print("[OK] All diagnostic tests passed")
             return True
         else:
-            print("❌ Diagnostic tests failed:")
+            print("[FAIL] Diagnostic tests failed:")
             if result.stdout:
                 print("STDOUT:", result.stdout)
             if result.stderr:
@@ -86,10 +86,10 @@ def run_diagnostics() -> bool:
             return False
             
     except subprocess.TimeoutExpired:
-        print("⏰ Diagnostic tests timed out")
+        print("[FAIL] Diagnostic tests timed out")
         return False
     except Exception as e:
-        print(f"💥 Error running diagnostics: {e}")
+        print(f"[FAIL] Error running diagnostics: {e}")
         return False
 
 # ============================================================================
@@ -98,11 +98,11 @@ def run_diagnostics() -> bool:
 
 async def run_github_sync(args) -> bool:
     """Run GitHub synchronization phase"""
-    print_phase_header("🌐 GITHUB SYNC PHASE")
+    print_phase_header("[SYNC] GITHUB SYNC PHASE")
     
     try:
         # Import and run the sync function
-        from scripts.setup.retrieve_songs_new import main as sync_main
+        from scripts.setup.retrieve_songs import main as sync_main
         
         # Build arguments for sync script
         sync_args = []
@@ -116,21 +116,21 @@ async def run_github_sync(args) -> bool:
         result = await sync_main(sync_args)
         
         if result == 0:
-            print("✅ GitHub sync completed successfully")
+            print("[OK] GitHub sync completed successfully")
             return True
         else:
-            print(f"❌ GitHub sync failed with exit code: {result}")
+            print(f"[FAIL] GitHub sync failed with exit code: {result}")
             return False
             
     except Exception as e:
-        print(f"💥 GitHub sync error: {e}")
+        print(f"[FAIL] GitHub sync error: {e}")
         import traceback
         traceback.print_exc()
         return False
 
 async def run_database_population(args) -> bool:
     """Run database population phase"""
-    print_phase_header("💾 DATABASE POPULATION PHASE")
+    print_phase_header("[DB] DATABASE POPULATION PHASE")
     
     try:
         # Import and run the population function
@@ -162,14 +162,14 @@ async def run_database_population(args) -> bool:
         result = await populate_main(pop_args)
         
         if result == 0:
-            print("✅ Database population completed successfully")
+            print("[OK] Database population completed successfully")
             return True
         else:
-            print(f"❌ Database population failed with exit code: {result}")
+            print(f"[FAIL] Database population failed with exit code: {result}")
             return False
             
     except Exception as e:
-        print(f"💥 Database population error: {e}")
+        print(f"[FAIL] Database population error: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -182,50 +182,50 @@ async def run_full_pipeline(args) -> int:
     """Run the complete pipeline"""
     start_time = time.time()
     
-    print("🎵 SONGS DATABASE PIPELINE")
+    print("SONGS DATABASE PIPELINE")
     print("=" * 80)
-    print(f"⏰ Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"[INFO] Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 80)
     
     # Phase 1: Prerequisites
-    print_phase_header("🔍 PREREQUISITE CHECKS")
+    print_phase_header("[CHECK] PREREQUISITE CHECKS")
     
     prereq_ok, issues = check_prerequisites()
     if not prereq_ok:
-        print("❌ Prerequisites check failed:")
+        print("[FAIL] Prerequisites check failed:")
         for issue in issues:
             print(f"   - {issue}")
         return 1
-    print("✅ Prerequisites check passed")
+    print("[OK] Prerequisites check passed")
     
     # Phase 2: Environment setup
-    print_section_header("📋 Environment setup")
+    print_section_header("[ENV] Environment setup")
     if not setup_environment():
-        print("⚠️  Continuing with system environment variables")
+        print("[WARN] Continuing with system environment variables")
     
     env_ok, env_issues = validate_environment()
     if not env_ok:
-        print("❌ Environment validation failed:")
+        print("[FAIL] Environment validation failed:")
         for issue in env_issues:
             print(f"   - {issue}")
         return 1
-    print("✅ Environment validation passed")
+    print("[OK] Environment validation passed")
     
     # Phase 3: Diagnostics (unless skipped)
     if not args.skip_diagnostics:
         if not run_diagnostics():
             if not args.ignore_diagnostic_failures:
-                print("❌ Diagnostic tests failed. Use --ignore-diagnostic-failures to continue anyway.")
+                print("[FAIL] Diagnostic tests failed. Use --ignore-diagnostic-failures to continue anyway.")
                 return 1
             else:
-                print("⚠️  Diagnostic tests failed but continuing due to --ignore-diagnostic-failures")
+                print("[WARN] Diagnostic tests failed but continuing due to --ignore-diagnostic-failures")
     
     # Phase 4: GitHub Sync (unless populate-only)
     sync_success = True
     if not args.populate_only:
         sync_success = await run_github_sync(args)
         if not sync_success and not args.ignore_sync_failures:
-            print("❌ GitHub sync failed. Use --ignore-sync-failures to continue anyway.")
+            print("[FAIL] GitHub sync failed. Use --ignore-sync-failures to continue anyway.")
             return 1
     
     # Phase 5: Database Population (unless sync-only)
@@ -242,27 +242,27 @@ async def run_full_pipeline(args) -> int:
     seconds = int(duration % 60)
     
     print("\n" + "=" * 80)
-    print(f"⏰ Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"⏱️  Total duration: {minutes}m {seconds}s")
+    print(f"[INFO] Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"[INFO] Total duration: {minutes}m {seconds}s")
     
     if sync_success and populate_success:
-        print("🎉 PIPELINE COMPLETED SUCCESSFULLY!")
+        print("[OK] PIPELINE COMPLETED SUCCESSFULLY!")
         
         # Show final status
         paths = get_data_paths()
         from scripts.setup.shared_utils import read_metadata
         metadata = read_metadata(paths['metadata_path'])
         
-        print_phase_header("📊 FINAL STATUS")
-        print(f"📊 Total songs: {len(metadata)}")
-        print(f"📁 Songs directory: {paths['songs_dir']}")
-        print(f"📄 PDFs directory: {paths['songs_pdf_dir']}")
-        print(f"🖼️  Images directory: {paths['songs_img_dir']}")
-        print(f"💾 Database: Ready for use")
+        print_phase_header("[STATUS] FINAL STATUS")
+        print(f"[INFO] Total songs: {len(metadata)}")
+        print(f"[INFO] Songs directory: {paths['songs_dir']}")
+        print(f"[INFO] PDFs directory: {paths['songs_pdf_dir']}")
+        print(f"[INFO] Images directory: {paths['songs_img_dir']}")
+        print(f"[INFO] Database: Ready for use")
         
         return 0
     else:
-        print("⚠️  PIPELINE COMPLETED WITH ISSUES")
+        print("[WARN] PIPELINE COMPLETED WITH ISSUES")
         return 1
 
 # ============================================================================
@@ -341,16 +341,16 @@ Examples:
     
     # Validate argument combinations
     if args.sync_only and args.populate_only:
-        print("❌ Cannot specify both --sync-only and --populate-only")
+        print("[FAIL] Cannot specify both --sync-only and --populate-only")
         return 1
     
     try:
         return asyncio.run(run_full_pipeline(args))
     except KeyboardInterrupt:
-        print("\n⚠️  Pipeline interrupted by user")
+        print("\n[WARN] Pipeline interrupted by user")
         return 130
     except Exception as e:
-        print(f"\n💥 Pipeline error: {e}")
+        print(f"\n[FAIL] Pipeline error: {e}")
         import traceback
         traceback.print_exc()
         return 1

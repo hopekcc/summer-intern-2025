@@ -36,12 +36,12 @@ def setup_environment() -> bool:
     for env_path in env_paths:
         if env_path.exists():
             load_dotenv(env_path)
-            print(f"✅ Loaded environment from: {env_path}")
+            print(f"Loaded environment from: {env_path}")
             env_loaded = True
             break
     
     if not env_loaded:
-        print("⚠️  No .env file found. Using system environment variables only.")
+        print("No .env file found. Using system environment variables only.")
     
     # Set sensible defaults for search infrastructure if not specified
     if not os.getenv("ENABLE_SEARCH_INDEXES"):
@@ -85,7 +85,7 @@ def ensure_directories(paths: Dict[str, str]) -> bool:
             test_file.write_text("test")
             test_file.unlink()
         except Exception as e:
-            print(f"❌ Error with directory {directory}: {e}")
+            print(f"Error with directory {directory}: {e}")
             return False
     
     return True
@@ -103,12 +103,12 @@ def read_metadata(metadata_path: str) -> Dict[str, str]:
         with open(metadata_path, "r", encoding="utf-8") as f:
             return json.load(f)
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        print(f"⚠️  Warning: Failed to read metadata file {metadata_path}: {e}")
+        print(f"Warning: Failed to read metadata file {metadata_path}: {e}")
         # Try to backup corrupted file
         backup_path = f"{metadata_path}.backup"
         try:
             os.rename(metadata_path, backup_path)
-            print(f"📦 Corrupted metadata backed up to: {backup_path}")
+            print(f"Corrupted metadata backed up to: {backup_path}")
         except Exception:
             pass
         return {}
@@ -136,7 +136,7 @@ def save_metadata(metadata: Dict[str, str], metadata_path: str) -> bool:
                 os.remove(temp_path)
             except Exception:
                 pass
-        print(f"❌ Failed to save metadata: {e}")
+        print(f"Failed to save metadata: {e}")
         return False
 
 def write_gzip_song_list(metadata: Dict[str, str], gzip_path: str) -> bool:
@@ -160,11 +160,11 @@ def write_gzip_song_list(metadata: Dict[str, str], gzip_path: str) -> bool:
         with gzip.open(gzip_path, "wt", encoding="utf-8") as gz:
             json.dump(payload, gz, ensure_ascii=False)
         
-        print(f"📦 Wrote compressed song list: {gzip_path} ({len(items)} entries)")
+        print(f"Wrote compressed song list: {gzip_path} ({len(items)} entries)")
         return True
         
     except Exception as e:
-        print(f"❌ Failed to write compressed song list: {e}")
+        print(f"Failed to write compressed song list: {e}")
         return False
 
 # ============================================================================
@@ -286,12 +286,12 @@ class ProgressTracker:
             self.success_count += 1
         
         progress = (self.current / self.total) * 100
-        status = "✅" if success else "❌"
+        status = "yes" if success else "no"
         
         if item_name:
             print(f"{status} {item_name}")
         
-        print(f"📊 Progress: {self.current}/{self.total} ({progress:.1f}%) - Success: {self.success_count}")
+        print(f"Progress: {self.current}/{self.total} ({progress:.1f}%) - Success: {self.success_count}")
         
         if self.current < self.total:
             print("-" * 50)
