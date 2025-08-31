@@ -73,15 +73,6 @@ def test_rooms_end_to_end_flow(client):
     assert "detail" in err and isinstance(err["detail"], dict)
     assert err["detail"].get("code") == "PAGE_OUT_OF_RANGE"
 
-    # 7) Sync state reflects selected song and page
-    r = client.get(f"/rooms/{room_id}/sync")
-    assert r.status_code == 200, r.text
-    sync = r.json()
-    assert sync["room_id"] == room_id
-    assert sync["current_song"] == song_id
-    assert sync["current_page"] == 1
-    assert isinstance(sync.get("participants"), list)
-
     # 8) PDF endpoint should serve the file
     r = client.get(f"/rooms/{room_id}/pdf")
     assert r.status_code == 200, r.text

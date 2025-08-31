@@ -14,3 +14,8 @@ room_database/
 .pytest_cache/
 /scripts/__pycache__/
 server/scripts/__pycache__
+
+
+/.kiro/
+/.vscode/
+/instructional-tool/

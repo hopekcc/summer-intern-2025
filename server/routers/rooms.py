@@ -68,10 +68,48 @@ async def create_room(request: Request, host_data = Depends(get_current_user), s
     start_time = time.perf_counter()
     host_id = host_data['uid']
     try:
-        # Simple room creation without deleting old rooms to avoid timeout
+        # Clean up any existing rooms for this host first
+        cleanup_start = time.perf_counter()
+        try:
+            # Find existing rooms hosted by this user
+            existing_rooms_result = await session.execute(
+                select(Room).where(Room.host_id == host_id)
+            )
+            existing_rooms = existing_rooms_result.scalars().all()
+            
+            if existing_rooms:
+                logger.info(f"Cleaning up {len(existing_rooms)} existing rooms for host {host_id}")
+                
+                # Get WebSocket factory for notifications
+                ws_factory = get_websocket_factory()
+                
+                for old_room in existing_rooms:
+                    # Notify participants that room is closing
+                    if ws_factory:
+                        try:
+                            ws_factory.register_room(old_room.room_id)
+                            asyncio.create_task(ws_factory.broadcast_to_room(old_room.room_id, {
+                                "type": "room_closed",
+                                "room_id": old_room.room_id,
+                                "reason": "Host created new room"
+                            }))
+                        except Exception:
+                            logger.warning("Failed to notify room closure", exc_info=True, extra={"room_id": old_room.room_id})
+                    
+                    # Delete the room (this also deletes participants via cascade or helper)
+                    await delete_room(session, old_room)
+                
+                cleanup_elapsed = (time.perf_counter() - cleanup_start) * 1000
+                logger.info(f"CLEANUP_OLD_ROOMS duration={cleanup_elapsed:.1f}ms count={len(existing_rooms)}")
+        except Exception as e:
+            logger.warning(f"Failed to cleanup old rooms for host {host_id}: {e}", exc_info=True)
+            # Continue with room creation even if cleanup fails
+        
+        # Create new room
         room_id = generate_room_id()
         new_room = await create_room_db(session, room_id, host_id)
-        await session.commit()  # Commit the room creation
+        await session.commit()  # Commit the room creation and cleanup
+        
         # Pre-register WS room to avoid warnings before any client joins
         try:
             ws_factory = get_websocket_factory()
@@ -79,6 +117,7 @@ async def create_room(request: Request, host_data = Depends(get_current_user), s
                 ws_factory.register_room(room_id)
         except Exception:
             logger.warning("Failed to pre-register WS room on create", exc_info=True, extra={"room_id": room_id})
+        
         elapsed = (time.perf_counter() - start_time) * 1000
         logger.info(f"CREATE_ROOM total={elapsed:.1f}ms room={room_id}")
         # Return room_id directly to avoid lazy loading after session commit
@@ -281,6 +320,8 @@ async def select_song_for_room(
             image_etag = f"W/\"{st.st_size:x}-{int(st.st_mtime)}\""
         except Exception as e:
             logger.error(f"Failed to compute image ETag for song selection: {e}")
+            # Set a default ETag to prevent null values in WebSocket messages
+            image_etag = f"error-{int(time.time())}"
         
         # Get WebSocket factory
         ws_factory = get_websocket_factory()
@@ -383,6 +424,8 @@ async def update_room_page(room_id: str, request: Request, host_data = Depends(g
                 image_etag = f"W/\"{st.st_size:x}-{int(st.st_mtime)}\""
             except Exception as e:
                 logger.error(f"Failed to get song details for page update: {e}")
+                # Set a default ETag to prevent null values in WebSocket messages
+                image_etag = f"error-{int(time.time())}"
 
         # Create payload with song metadata
         page_update_payload = {
@@ -480,16 +523,29 @@ async def get_room_current_image(
     if if_none_match:
         # Normalize and compare; support weak or strong token formats
         candidate = if_none_match.strip()
-        if candidate.startswith('W/'):
-            candidate = candidate[2:].strip()
-        if candidate.startswith('"') and candidate.endswith('"'):
-            candidate = candidate[1:-1]
-        if candidate == etag_naked:
-            # 304 Not Modified
-            return Response(status_code=304, headers={
-                "ETag": etag_value,
-                "Cache-Control": "private, no-cache",
-            })
+        # Handle multiple ETags (comma-separated)
+        etag_candidates = [tag.strip() for tag in candidate.split(',')]
+        
+        for etag_candidate in etag_candidates:
+            normalized_candidate = etag_candidate
+            if normalized_candidate.startswith('W/'):
+                normalized_candidate = normalized_candidate[2:].strip()
+            if normalized_candidate.startswith('"') and normalized_candidate.endswith('"'):
+                normalized_candidate = normalized_candidate[1:-1]
+            
+            if normalized_candidate == etag_naked:
+                # 304 Not Modified
+                return Response(status_code=304, headers={
+                    "ETag": etag_value,
+                    "Cache-Control": "private, no-cache",
+                })
+            
+            # Also check for "*" which means any ETag matches
+            if etag_candidate.strip() == "*":
+                return Response(status_code=304, headers={
+                    "ETag": etag_value,
+                    "Cache-Control": "private, no-cache",
+                })
 
     headers = {
         "ETag": etag_value,
@@ -497,53 +553,7 @@ async def get_room_current_image(
     }
     return FileResponse(path=image_path, media_type=mime or "application/octet-stream", headers=headers)
 
-@router.get("/{room_id}/sync", response_model=None)
-async def sync_room_state(room_id: str, room_and_user = Depends(get_room_access), session: AsyncSession = Depends(get_db_session), songs_img_dir: str = Depends(get_songs_img_dir)):
-    # Get the current room state for syncing clients
-    room, user_id = room_and_user
-    try:
-        
-        # Get participant list
-        participants_result = await session.execute(
-            select(RoomParticipant).where(RoomParticipant.room_id == room_id)
-        )
-        participant_list = [p.user_id for p in participants_result.scalars().all()]
-        
-        # If there's a current song, get its details
-        song_details = None
-        if room.current_song:
-            try:
-                song = await get_song_by_id_from_db(session, room.current_song)
-                song_details = {
-                    'id': song.id,
-                    'title': song.title,
-                    'artist': song.artist,
-                    'total_pages': getattr(song, 'page_count', 1)
-                }
-            except Exception as e:
-                logger.error(f"Failed to get song details for sync: {e}")
-        
-        # Compute image ETag for current page (metadata only) using weak ETag (size-mtime)
-        image_etag = None
-        if room.current_song and room.current_page:
-            try:
-                image_path = os.path.join(songs_img_dir, room.current_song, f"page_{room.current_page}.webp")
-                logger.info(f"Room sync - Using image path: {image_path} (song_id: {room.current_song})")
-                st = os.stat(image_path)
-                image_etag = f"W/\"{st.st_size:x}-{int(st.st_mtime)}\""
-            except Exception as e:
-                logger.error(f"Failed to compute image ETag for sync: {e}")
-        
-        return {
-            "room_id": room.room_id,
-            "host_id": room.host_id,
-            "current_song": room.current_song,
-            "current_page": room.current_page,
-            "song_details": song_details,
-            # Clients fetch image via HTTP GET /rooms/{room_id}/image when ETag changes
-            "image_etag": image_etag,
-            "participants": participant_list
-        }
-    except Exception as e:
-        logger.error(f"Failed to sync room {room_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Could not sync room state.")
+# DEPRECATED: /sync endpoint removed - WebSocket provides real-time room state
+# Clients should connect via WebSocket after joining a room to receive initial state
+# and real-time updates. The WebSocket join_room_success message now includes
+# the current room state, eliminating the need for a separate sync call.

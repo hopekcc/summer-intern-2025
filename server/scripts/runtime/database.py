@@ -14,6 +14,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 import os
 import time
 import asyncio
+import uuid
 from scripts.runtime.logger import logger as _app_logger
 logger = _app_logger.getChild("db")
 
@@ -99,22 +100,25 @@ class RoomParticipant(SQLModel, table=True):
     
     room: Room = Relationship(back_populates="participants")
 
-from sqlmodel import SQLModel, Field, Relationship
-from typing import List, Optional
-import uuid
+# Duplicate imports removed - using main imports above
 
 
 class Playlist(SQLModel, table=True):
-   id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
-   name: str
-   user_id: int = Field(foreign_key="users.id")  # Add this field
-   songs: List["PlaylistSong"] = Relationship(back_populates="playlist")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    name: str
+    description: Optional[str] = None
+    user_id: str = Field(index=True)  # Firebase UID as indexed string (no FK constraint)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    songs: List["PlaylistSong"] = Relationship(back_populates="playlist")
 
 class PlaylistSong(SQLModel, table=True):
-   playlist_id: str = Field(foreign_key="playlist.id", primary_key=True)
-   song_id: str = Field(foreign_key="songs.id", primary_key=True)  # Ensure foreign key matches Song table
-   playlist: Playlist = Relationship(back_populates="songs")
-   song: Song = Relationship(back_populates="playlist_songs")  # Add back_populates here
+    playlist_id: str = Field(foreign_key="playlist.id", primary_key=True)
+    song_id: str = Field(foreign_key="songs.id", primary_key=True)
+    added_at: datetime = Field(default_factory=datetime.utcnow)
+    position: int = Field(default=0)  # For future ordering support
+    playlist: Playlist = Relationship(back_populates="songs")
+    song: Song = Relationship(back_populates="playlist_songs")
 
 # Single async engine configured by env (PostgreSQL-only)
 DATABASE_URL = get_database_url()
@@ -188,29 +192,42 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+def normalize_song_id(song_id: str) -> str:
+    """Normalize song ID by removing leading zeros from numeric IDs."""
+    if isinstance(song_id, str) and song_id.isdigit():
+        try:
+            # Convert to int and back to string to remove leading zeros
+            return str(int(song_id))
+        except ValueError:
+            pass
+    return song_id
+
 # Core database functions
 async def get_song_by_id_from_db(session: AsyncSession, song_id: str) -> Optional[Song]:
-    """Get song by ID using the provided session"""
+    """Get song by ID using the provided session with smart fallback for different ID formats"""
     start_time = time.perf_counter()
-    # First attempt: exact match
-    result = await session.execute(select(Song).where(Song.id == song_id))
+    
+    # Normalize the input ID first
+    normalized_id = normalize_song_id(song_id)
+    
+    # Try normalized ID first
+    result = await session.execute(select(Song).where(Song.id == normalized_id))
     song = result.scalars().first()
-
-    # Fallbacks for numeric IDs with/without zero-padding
+    
+    # If not found and input was different from normalized, try original
+    if not song and normalized_id != song_id:
+        result = await session.execute(select(Song).where(Song.id == song_id))
+        song = result.scalars().first()
+    
+    # Fallback: try common padding formats for numeric IDs
     if not song and isinstance(song_id, str) and song_id.isdigit():
         try:
             numeric_val = int(song_id)
-            # Try unpadded (e.g., "20") if input was padded
-            unpadded = str(numeric_val)
-            if unpadded != song_id:
-                result = await session.execute(select(Song).where(Song.id == unpadded))
+            # Try 4-digit padded format (legacy)
+            padded4 = f"{numeric_val:04d}"
+            if padded4 != song_id and padded4 != normalized_id:
+                result = await session.execute(select(Song).where(Song.id == padded4))
                 song = result.scalars().first()
-            # If still not found, try 4-digit padded (e.g., "0020") if input was unpadded
-            if not song:
-                padded4 = f"{numeric_val:04d}"
-                if padded4 != song_id:
-                    result = await session.execute(select(Song).where(Song.id == padded4))
-                    song = result.scalars().first()
         except Exception:
             # If any conversion error occurs, ignore and proceed with song as None
             pass
