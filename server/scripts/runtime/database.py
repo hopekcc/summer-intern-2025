@@ -69,8 +69,10 @@ class Song(SQLModel, table=True):
     date_added: datetime = Field(default_factory=datetime.utcnow)
     filename: Optional[str] = None
     page_count: int
-    
-    # Remove circular relationship for performance
+
+    # Add relationship back to PlaylistSong
+    playlist_songs: List["PlaylistSong"] = Relationship(back_populates="song")
+
 
 class Room(SQLModel, table=True):
     __tablename__ = "room"  # Match original schema
@@ -96,6 +98,23 @@ class RoomParticipant(SQLModel, table=True):
     joined_at: datetime = Field(default_factory=datetime.utcnow)
     
     room: Room = Relationship(back_populates="participants")
+
+from sqlmodel import SQLModel, Field, Relationship
+from typing import List, Optional
+import uuid
+
+
+class Playlist(SQLModel, table=True):
+   id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+   name: str
+   user_id: int = Field(foreign_key="users.id")  # Add this field
+   songs: List["PlaylistSong"] = Relationship(back_populates="playlist")
+
+class PlaylistSong(SQLModel, table=True):
+   playlist_id: str = Field(foreign_key="playlist.id", primary_key=True)
+   song_id: str = Field(foreign_key="songs.id", primary_key=True)  # Ensure foreign key matches Song table
+   playlist: Playlist = Relationship(back_populates="songs")
+   song: Song = Relationship(back_populates="playlist_songs")  # Add back_populates here
 
 # Single async engine configured by env (PostgreSQL-only)
 DATABASE_URL = get_database_url()
