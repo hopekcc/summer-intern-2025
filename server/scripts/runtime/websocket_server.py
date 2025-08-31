@@ -146,16 +146,51 @@ class MusicRoomProtocol(WebSocketServerProtocol):
             reset_request_id(token)
             return
         
-        # Verify the room exists in the database
+        # Get current room state from database
+        room_state = None
         try:
             async for session in get_db_session():
                 room = await get_room_by_id_from_db(session, room_id)
-                if not room:
-                    # We'll allow joining non-existent rooms since they might be created later
-                    # This improves reliability when rooms are created via REST API
-                    pass
+                if room:
+                    # Get song details if there's a current song
+                    song_details = None
+                    if room.current_song:
+                        try:
+                            song = await get_song_by_id_from_db(session, room.current_song)
+                            if song:
+                                song_details = {
+                                    'id': song.id,
+                                    'title': song.title,
+                                    'artist': song.artist,
+                                    'total_pages': getattr(song, 'page_count', 1)
+                                }
+                        except Exception as e:
+                            logger.error(f"Failed to get song details for WebSocket join: {e}")
+                    
+                    # Compute image ETag for current page
+                    image_etag = None
+                    if room.current_song and room.current_page:
+                        try:
+                            import os
+                            from scripts.runtime.paths import get_songs_img_dir
+                            songs_img_dir = get_songs_img_dir()
+                            image_path = os.path.join(songs_img_dir, room.current_song, f"page_{room.current_page}.webp")
+                            st = os.stat(image_path)
+                            image_etag = f"W/\"{st.st_size:x}-{int(st.st_mtime)}\""
+                        except Exception as e:
+                            logger.error(f"Failed to compute image ETag for WebSocket join: {e}")
+                            image_etag = f"error-{int(time.time())}"
+                    
+                    room_state = {
+                        "room_id": room.room_id,
+                        "host_id": room.host_id,
+                        "current_song": room.current_song,
+                        "current_page": room.current_page,
+                        "song_details": song_details,
+                        "image_etag": image_etag
+                    }
         except Exception as e:
-            logger.error(f"Database error while verifying room {room_id}: {e}")
+            logger.error(f"Database error while getting room state {room_id}: {e}")
             # Continue despite errors for better resilience
         
         old_room = self.room_id
@@ -174,9 +209,13 @@ class MusicRoomProtocol(WebSocketServerProtocol):
                 "WS joined room",
                 extra={"request_id": getattr(self, 'request_id', '-'), "uid": self.user_id, "room_id": room_id},
             )
+        
+        # Send join success with current room state
+        join_response = {"type": "join_room_success", "room_id": room_id}
+        if room_state:
+            join_response["room_state"] = room_state
             
-        # Send a success message
-        self.sendMessage(json.dumps({"type": "join_room_success", "room_id": room_id}).encode('utf8'))
+        self.sendMessage(json.dumps(join_response).encode('utf8'))
         reset_request_id(token)
         return
     
@@ -213,33 +252,35 @@ class MusicRoomProtocol(WebSocketServerProtocol):
     def onClose(self, wasClean, code, reason):
         # Handle WebSocket connection closing
         token = set_request_id(getattr(self, 'request_id', None))
+        
         # Clean up room membership if needed
         room_id = getattr(self, 'room_id', None)
+        user_id = getattr(self, 'user_id', 'unknown')
+        
+        # Unregister connection FIRST to prevent receiving own messages
+        if hasattr(self, 'user_id') and self.user_id:
+            self.factory.unregister_connection(self)
+        
         if room_id:
-            # Notify others BEFORE removing membership to avoid missing room warnings
+            # Remove from room FIRST
+            self.factory.leave_room(self, room_id)
+            
+            # THEN notify others (exclude=self is now safe since we're not in connections)
             asyncio.create_task(self.factory.broadcast_to_room(room_id, {
                 "type": "participant_left",
-                "user_id": getattr(self, 'user_id', 'unknown')
-            }, exclude=self))
-            # Now remove and log
-            self.factory.leave_room(self, room_id)
+                "user_id": user_id
+            }))
+            
             logger.info(
                 "WS disconnected in room",
-                extra={"request_id": getattr(self, 'request_id', '-'), "uid": getattr(self, 'user_id', 'unknown'), "room_id": room_id},
-            )
-            logger.info(
-                "WS removed from room after disconnect",
-                extra={"request_id": getattr(self, 'request_id', '-'), "uid": getattr(self, 'user_id', 'unknown'), "room_id": room_id},
+                extra={"request_id": getattr(self, 'request_id', '-'), "uid": user_id, "room_id": room_id},
             )
         else:
             logger.info(
                 "WS disconnected",
-                extra={"request_id": getattr(self, 'request_id', '-'), "uid": getattr(self, 'user_id', 'unknown')},
+                extra={"request_id": getattr(self, 'request_id', '-'), "uid": user_id},
             )
 
-        # Unregister connection
-        if hasattr(self, 'user_id') and self.user_id:
-            self.factory.unregister_connection(self)
         # Stop writer and clear queue
         try:
             self._close_send_queue()
@@ -305,8 +346,10 @@ class MusicRoomProtocol(WebSocketServerProtocol):
                     # schedule flush
                     if not self._coalesce_task or self._coalesce_task.done():
                         self._coalesce_task = asyncio.create_task(self._flush_coalesced_after(window_s))
-                # store latest and return (do not enqueue yet)
+                # store latest - this will be sent later during flush
                 self._coalesce_latest[msg_type] = message
+                # Return True but log that message is coalesced, not immediately sent
+                logger.debug("WS message coalesced", extra={"uid": getattr(self, 'user_id', None), "type": msg_type})
                 return True
 
             # Non-coalescable -> encode and enqueue now
@@ -445,6 +488,16 @@ class MusicRoomFactory(WebSocketServerFactory):
     def register_connection(self, protocol: MusicRoomProtocol):
         """Register a new connection."""
         if protocol.user_id:
+            # Check if user already has a connection
+            if protocol.user_id in self.connections:
+                old_connection = self.connections[protocol.user_id]
+                logger.info("WS replacing existing connection", extra={"uid": protocol.user_id})
+                # Close old connection gracefully
+                try:
+                    old_connection.sendClose(code=4003, reason="New connection established")
+                except Exception:
+                    pass
+            
             self.connections[protocol.user_id] = protocol
             logger.info("WS registered connection", extra={"uid": protocol.user_id})
     
@@ -483,12 +536,12 @@ class MusicRoomFactory(WebSocketServerFactory):
             logger.warning("Attempted to broadcast to non-existent room", extra={"room_id": room_id, "ws_event": message.get('type')})
             return
         
-        # Skip batching for non-batchable message types
-        non_batchable_types = ['critical_update', 'song_updated', 'page_updated']
+        # Skip batching for critical message types - send immediately and bypass coalescing
+        immediate_types = ['critical_update', 'song_updated', 'page_updated']
         
-        if message.get('type') in non_batchable_types:
-            # Send immediately without batching
-            self._send_to_room_users(room_id, message, exclude)
+        if message.get('type') in immediate_types:
+            # Send immediately without batching or coalescing
+            self._send_to_room_users_immediate(room_id, message, exclude)
             return
             
         # Initialize queue if needed
@@ -563,6 +616,28 @@ class MusicRoomFactory(WebSocketServerFactory):
                     logger.error("WS enqueue to user failed", exc_info=True, extra={"uid": user_id})
         
         logger.debug("WS sent message", extra={"room_id": room_id, "ws_event": message.get('type'), "recipient_count": count})
+        return count
+    
+    def _send_to_room_users_immediate(self, room_id: str, message: Dict[str, Any], exclude=None):
+        """Send a message immediately to all users in a room, bypassing coalescing."""
+        if room_id not in self.rooms:
+            logger.warning("Attempted to send immediate to non-existent room", extra={"room_id": room_id, "ws_event": message.get('type')})
+            return
+        
+        count = 0
+        encoded_message = json.dumps(message).encode('utf8')
+        
+        for user_id in self.rooms[room_id]:
+            if user_id in self.connections and (not exclude or user_id != exclude.user_id):
+                try:
+                    # Send directly, bypassing the queue and coalescing
+                    connection = self.connections[user_id]
+                    connection.sendMessage(encoded_message)
+                    count += 1
+                except Exception:
+                    logger.error("WS immediate send to user failed", exc_info=True, extra={"uid": user_id})
+        
+        logger.debug("WS sent immediate message", extra={"room_id": room_id, "ws_event": message.get('type'), "recipient_count": count})
         return count
     
     def register_room(self, room_id: str):
