@@ -223,8 +223,8 @@ def dashboard():
 @app.route("/login")
 def login_page():
     force = request.args.get("force") == "1"
-    if not force and current_user():
-        return redirect(url_for("home"))
+    # if not force and current_user():
+    #     return redirect(url_for("home"))
     return render_template("login.html")
 
 # SIGN IN PAGE
