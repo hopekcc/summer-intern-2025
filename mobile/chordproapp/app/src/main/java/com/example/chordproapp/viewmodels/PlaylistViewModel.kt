@@ -13,36 +13,6 @@ class PlaylistViewModel(
     val repository: PlaylistRepository
 ) : ViewModel() {
 
-//    private val _playlists = mutableStateListOf(
-//        "Playlist 1",
-//        "Playlist 2",
-//        "Playlist 3"
-//    )
-//    val playlists: List<String> get() = _playlists
-//    private var deletedPlaylist: String? = null
-//
-//    fun addPlaylist(name: String) {
-//        if (name.isNotBlank() && !playlists.contains(name)) {
-//            _playlists.add(name)
-//        }
-//    }
-//
-//    fun deletePlaylist(name: String) {
-//        if (playlists.contains(name)) {
-//            deletedPlaylist = name
-//            _playlists.remove(name)
-//        }
-//    }
-//
-//    fun undoDelete() {
-//        deletedPlaylist?.let {
-//            if (!_playlists.contains(it)) {
-//                _playlists.add(it)
-//            }
-//            deletedPlaylist = null
-//        }
-//    }
-//
     var newlyCreatedPlaylists = mutableStateMapOf<String, Boolean>()
         private set
 
@@ -71,13 +41,12 @@ class PlaylistViewModel(
         }
     }
 
-
     fun createPlaylist(name: String, onResult: (Playlist?) -> Unit) {
         viewModelScope.launch {
             val newPlaylist = repository.createPlaylist(name)
             if (newPlaylist != null) {
                 loadAllPlaylists()
-                markAsNew(newPlaylist.id.toString())
+                markAsNew(newPlaylist.name) // Use playlist name instead of ID for marking as new
             } else {
                 _errorMessage.value = "Failed to create playlist"
             }
@@ -85,7 +54,7 @@ class PlaylistViewModel(
         }
     }
 
-    fun addSongToPlaylist(playlistId: Int, songId: Int) {
+    fun addSongToPlaylist(playlistId: String, songId: Int) {
         viewModelScope.launch {
             val success = repository.addSongsToPlaylist(playlistId, songId)
             if (success) loadAllPlaylists()
@@ -93,7 +62,7 @@ class PlaylistViewModel(
         }
     }
 
-    fun deletePlaylist(playlistId: Int) {
+    fun deletePlaylist(playlistId: String) {
         viewModelScope.launch {
             val success = repository.deletePlaylist(playlistId)
             if (success) loadAllPlaylists()
@@ -101,7 +70,7 @@ class PlaylistViewModel(
         }
     }
 
-    fun removeSongFromPlaylist(playlistId: Int, songId: Int) {
+    fun removeSongFromPlaylist(playlistId: String, songId: Int) {
         viewModelScope.launch {
             val success = repository.removeSong(playlistId, songId)
             if (success) loadAllPlaylists()

@@ -59,9 +59,9 @@ fun AppNavigation(
         }
         composable(
             route = "playlist/{playlistId}",
-            arguments = listOf(navArgument("playlistId") { type = NavType.IntType })
+            arguments = listOf(navArgument("playlistId") { type = NavType.StringType }) // Changed from IntType to StringType for UUID support
         ) { backStackEntry ->
-            val playlistId = backStackEntry.arguments?.getInt("playlistId") ?: 0
+            val playlistId = backStackEntry.arguments?.getString("playlistId") ?: "" // Changed from getInt to getString
             val playlists by playlistViewModel.playlists.collectAsState(initial = emptyList())
             val playlist = playlists.find { it.id == playlistId }
 

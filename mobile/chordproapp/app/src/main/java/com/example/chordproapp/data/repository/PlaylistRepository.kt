@@ -19,7 +19,7 @@ class PlaylistRepository(tokenProvider: () -> String?) {
 
         val client = OkHttpClient.Builder()
             .addInterceptor(logging)
-            .addInterceptor(AuthInterceptor(tokenProvider)) // <-- inject token automatically
+            .addInterceptor(AuthInterceptor(tokenProvider))
             .build()
 
         api = Retrofit.Builder()
@@ -33,17 +33,17 @@ class PlaylistRepository(tokenProvider: () -> String?) {
     suspend fun createPlaylist(name: String): Playlist? {
         return try {
             val response = api.createPlaylist(CreatePlaylistRequest(name))
-            if (response.isSuccessful)
-                response.body()
-                else null
+            if (response.isSuccessful) {
+                response.body()?.data // Extract data from wrapped response
+            } else null
         } catch (e: Exception) {
             null
         }
     }
 
-    suspend fun addSongsToPlaylist(playlistId: Int, songId: Int): Boolean {
+    suspend fun addSongsToPlaylist(playlistId: String, songId: Int): Boolean {
         return try {
-            val response = api.addSongs(playlistId)
+            val response = api.addSongs(playlistId, songId)
             response.isSuccessful
         } catch (e: Exception) {
             false
@@ -54,7 +54,7 @@ class PlaylistRepository(tokenProvider: () -> String?) {
         return try {
             val response = api.listAllPlaylists()
             if (response.isSuccessful) {
-                response.body() ?: emptyList()
+                response.body()?.data ?: emptyList() // Extract data array from wrapped response
             } else {
                 emptyList()
             }
@@ -63,7 +63,7 @@ class PlaylistRepository(tokenProvider: () -> String?) {
         }
     }
 
-    suspend fun deletePlaylist(id: Int): Boolean {
+    suspend fun deletePlaylist(id: String): Boolean {
         return try {
             val response = api.deletePlaylist(id)
             response.isSuccessful
@@ -72,7 +72,7 @@ class PlaylistRepository(tokenProvider: () -> String?) {
         }
     }
 
-    suspend fun removeSong(playlistId: Int, songId: Int): Boolean {
+    suspend fun removeSong(playlistId: String, songId: Int): Boolean {
         return try {
             val response = api.removeSong(playlistId, songId)
             response.isSuccessful
