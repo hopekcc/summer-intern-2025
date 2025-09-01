@@ -42,7 +42,7 @@
         if (!query) { results.innerHTML = ""; return; }
 
         try {
-          const res = await fetch(`http://34.125.143.141:8000/songs/search/${encodeURIComponent(query)}`, {
+          const res = await fetch(`http://34.125.143.141:8000/songs/search/substring?q=${encodeURIComponent(query)}&limit=100`, {
             headers: { Authorization: "Bearer " + token }
           });
           if (!res.ok) { results.innerHTML = "<p style='color:red;'>Failed to fetch results</p>"; return; }
