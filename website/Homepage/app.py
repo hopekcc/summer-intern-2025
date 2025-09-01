@@ -27,6 +27,7 @@ from firebase_admin import credentials, auth as admin_auth
 
 app = Flask(__name__)
 
+
 # -----------------------------------------------------------------------------
 # Firebase Admin initialization
 # -----------------------------------------------------------------------------
@@ -223,8 +224,8 @@ def dashboard():
 @app.route("/login")
 def login_page():
     force = request.args.get("force") == "1"
-    if not force and current_user():
-        return redirect(url_for("home"))
+    # if not force and current_user():
+    #     return redirect(url_for("home"))
     return render_template("login.html")
 
 # SIGN IN PAGE
@@ -551,6 +552,52 @@ def get_room_image(room_id):
     except requests.RequestException as e:
         print(f"Error calling backend for image: {e}")
         return jsonify({"error": "Backend unavailable"}), 502
+
+@app.route("/songs/<song_id>/pdf")
+def proxy_song_pdf(song_id):
+    url = f"{BACKEND_BASE}/songs/{song_id}/pdf"
+
+    headers = {}
+    token = request.args.get("token")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if "session" in request.cookies:
+        headers["Cookie"] = f"session={request.cookies['session']}"
+
+    try:
+        upstream = requests.get(url, headers=headers, stream=True, timeout=25)
+    except requests.RequestException:
+        abort(502)
+
+    if upstream.status_code != 200:
+        abort(upstream.status_code)
+
+    def gen():
+        for chunk in upstream.iter_content(8192):
+            if chunk:
+                yield chunk
+
+    # --- Force inline viewing ---
+    # Prefer upstream filename if present; otherwise make a safe fallback.
+    upstream_cd = upstream.headers.get("Content-Disposition", "")
+    upstream_name = None
+    if "filename=" in upstream_cd:
+        upstream_name = upstream_cd.split("filename=", 1)[1].strip('"; ')
+    filename = upstream_name or f"{song_id}.pdf"
+
+    resp_headers = {
+        # Tell the browser to render it, not download
+        "Content-Disposition": f'inline; filename="{filename}"'
+    }
+
+    # (Optional) allow embedding on same origin if your upstream sends restrictive headers
+    # resp_headers["X-Frame-Options"] = "SAMEORIGIN"
+
+    # Ensure correct content type
+    content_type = "application/pdf"
+
+    return Response(gen(), headers=resp_headers, content_type=content_type)
+
 
 # Legacy route for backward compatibility
 @app.route("/api/rooms", methods=["POST"])
