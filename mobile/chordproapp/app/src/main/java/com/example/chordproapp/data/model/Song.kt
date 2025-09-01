@@ -1,4 +1,4 @@
-package com.example.chordproapp.data
+package com.example.chordproapp.data.model
 
 data class Song(
     val id: Int,

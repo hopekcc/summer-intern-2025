@@ -1,6 +1,7 @@
-package com.example.chordproapp.data
+package com.example.chordproapp.data.api
 
-import okhttp3.Interceptor
+import com.example.chordproapp.data.model.Song
+import com.example.chordproapp.data.model.SongDetail
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.GET
@@ -18,14 +19,4 @@ interface ApiService {
 
     @GET("songs/{song_id}/pdf")
     suspend fun getSongPdf(@Path("song_id") songId: Int): Response<ResponseBody>
-}
-
-class AuthInterceptor(private val tokenProvider: () -> String?) : Interceptor {
-    override fun intercept(chain: Interceptor.Chain): okhttp3.Response {
-        val requestBuilder = chain.request().newBuilder()
-        tokenProvider()?.let { token ->
-            requestBuilder.addHeader("Authorization", "Bearer $token")
-        }
-        return chain.proceed(requestBuilder.build())
-    }
 }

@@ -2,7 +2,6 @@ package com.example.chordproapp.screens
 
 import android.annotation.SuppressLint
 import android.net.Uri
-import android.text.Layout
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -42,6 +41,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +56,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
@@ -62,7 +65,10 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.chordproapp.R
 import com.example.chordproapp.viewmodels.PlaylistViewModel
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.launch
 
+@SuppressLint("FlowOperatorInvokedInComposition")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
@@ -81,7 +87,7 @@ fun ProfileScreen(
         }
 
 
-    val playlists = playlistViewModel.playlists
+    val playlists by playlistViewModel.playlists.collectAsStateWithLifecycle()
     val first3Playlists = playlists.take(3)
 
     Scaffold(
@@ -244,9 +250,9 @@ fun ProfileScreen(
             }
 
             // Playlist Cards
-            items(first3Playlists) { name ->
-                PlaylistButton(text = name) {
-                    navController.navigate("playlist/${name}")
+            items(first3Playlists) { playlist ->
+                PlaylistButton(text = playlist.name) {
+                    navController.navigate("playlist/${playlist.id}")
                 }
                 Spacer(modifier = Modifier.height(12.dp))
             }
@@ -355,11 +361,23 @@ fun PlaylistButton(text: String, onClick: () -> Unit) {
 
 @Composable
 fun Playlist(
-    playlistName: String,
-    songCount: Int,
+    playlistId: Int,
     playlistViewModel: PlaylistViewModel,
     navController: NavHostController
 ) {
+    val playlists by playlistViewModel.playlists.collectAsState()
+    val playlist = playlists.find { it.id == playlistId}
+
+    if (playlist == null) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Playlist not found")
+        }
+        return
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
@@ -374,17 +392,27 @@ fun Playlist(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(bottom = 5.dp)
                 ) {
-                    BackButton { navController.popBackStack()}
+                    BackButton {
+                        if (playlistViewModel.isNewPlaylist(playlist.name)) {
+                            navController.navigate("allPlaylists") {
+                                popUpTo("allPlaylists") { inclusive = true }
+                            }
+                            playlistViewModel.clearNewFlag(playlist.name)
+                        } else {
+                            navController.popBackStack()
+                        }
+                    }
+
 
                     Text(
-                        playlistName,
+                        playlist.name,
                         style = MaterialTheme.typography.headlineLarge,
                         color = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier.weight(1f)
                     )
                     //delete playlist button
                     Button(
-                        onClick = { playlistViewModel.deletePlaylist(playlistName) },
+                        onClick = { playlistViewModel.deletePlaylist(playlist.id) },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.surface,
                             contentColor = MaterialTheme.colorScheme.error
@@ -409,13 +437,13 @@ fun Playlist(
 
             item{
                 Text(
-                    text = "$songCount songs",
+                    text = "${playlist.songs.size} songs",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(start = 10.dp, bottom = 15.dp)
                 )
             }
 
-            items(songCount) {
+            items(playlist.songs.size) {
                 SongButton(onClick = {})
                 Spacer(modifier = Modifier.height(12.dp))
             }
@@ -457,8 +485,11 @@ fun SongButton(onClick: () -> Unit) {
 }
 
 @Composable
-fun AllPlaylists(navController: NavController, playlistViewModel: PlaylistViewModel) {
-    val playlists = playlistViewModel.playlists
+fun AllPlaylists(
+    navController: NavController,
+    playlistViewModel: PlaylistViewModel
+) {
+    val playlists by playlistViewModel.playlists.collectAsState(initial = emptyList())
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background
@@ -474,7 +505,11 @@ fun AllPlaylists(navController: NavController, playlistViewModel: PlaylistViewMo
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(bottom = 20.dp)
                 ){
-                    BackButton { navController.popBackStack()}
+                    BackButton {
+                        navController.navigate("profile") {
+                            popUpTo("allPlaylists") { inclusive = true }
+                        }
+                    }
 
                     Text(
                         "All Sheet Collections",
@@ -484,18 +519,26 @@ fun AllPlaylists(navController: NavController, playlistViewModel: PlaylistViewMo
                 }
             }
 
-            items(playlists) { name ->
-                PlaylistButton(text = name) {
-                    navController.navigate("playlist/${name}")
+            items(playlists) { playlist ->
+                PlaylistButton(text = playlist.name) {
+                    navController.navigate("playlist/${playlist.id}")
                 }
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
     }
+    // Load playlists when composable is first displayed
+    LaunchedEffect(Unit) {
+        playlistViewModel.loadAllPlaylists()
+    }
+
 }
 
 @Composable
-fun NewPlaylist(navController: NavController, playlistViewModel: PlaylistViewModel) {
+fun NewPlaylist(
+    navController: NavController,
+    playlistViewModel: PlaylistViewModel
+) {
     var playlistName by remember { mutableStateOf("") }
 
     Scaffold(
@@ -508,18 +551,21 @@ fun NewPlaylist(navController: NavController, playlistViewModel: PlaylistViewMod
                 .padding(top = 35.dp, start = 24.dp, end = 24.dp, bottom = 24.dp)
         ) {
             item {
-                Row {
-//                    BackButton { navController.popBackStack()}
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(bottom = 20.dp)
+                ) {
+                    BackButton { navController.popBackStack()}
 
                     Text(
                         "Create Collection",
                         style = MaterialTheme.typography.headlineLarge,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.padding(bottom = 32.dp)
+                        color = MaterialTheme.colorScheme.onBackground
                     )
                 }
             }
 
+            //collection name input
             item {
                 OutlinedTextField(
                     value = playlistName,
@@ -547,11 +593,17 @@ fun NewPlaylist(navController: NavController, playlistViewModel: PlaylistViewMod
             item {
                 Button(
                     onClick = {
-                        playlistViewModel.addPlaylist(playlistName)
-                        navController.navigate("playlist/${playlistName}")
-                        playlistName = ""
+                        playlistViewModel.createPlaylist(playlistName) { newPlaylist ->
+                            newPlaylist?.let {
+                                playlistViewModel.loadAllPlaylists()
+                                navController.navigate("playlist/${it.id}"){
+                                    popUpTo("newPlaylist") { inclusive = true }
+                                }
+                                playlistName = ""
+                            }
+                        }
                     },
-                    enabled = playlistName.isNotBlank(),
+                    enabled = playlistName.trim().isNotBlank(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     ),
@@ -594,20 +646,20 @@ fun BackButton(onClick: () -> Unit) {
 //        onLogout = {}
 //    )
 //}
-
-@SuppressLint("ViewModelConstructorInComposable")
-@Preview
-@Composable
-fun PlaylistPreview() {
-    val previewNavController = rememberNavController()
-    val previewPlaylistViewModel = PlaylistViewModel()
-    Playlist(
-        playlistName= "Playlist 1",
-        songCount= 10,
-        navController = previewNavController,
-        playlistViewModel = previewPlaylistViewModel,
-    )
-}
+//
+//@SuppressLint("ViewModelConstructorInComposable")
+//@Preview
+//@Composable
+//fun PlaylistPreview() {
+//    val previewNavController = rememberNavController()
+//    val previewPlaylistViewModel = PlaylistViewModel()
+//    Playlist(
+//        playlistName= "Playlist 1",
+//        songCount= 10,
+//        navController = previewNavController,
+//        playlistViewModel = previewPlaylistViewModel,
+//    )
+//}
 //
 //@SuppressLint("ViewModelConstructorInComposable")
 //@Preview(showBackground = true)

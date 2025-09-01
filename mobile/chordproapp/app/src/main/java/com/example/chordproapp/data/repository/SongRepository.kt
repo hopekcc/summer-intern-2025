@@ -1,12 +1,13 @@
-package com.example.chordproapp.data
+package com.example.chordproapp.data.repository
 
+import com.example.chordproapp.data.AuthInterceptor
+import com.example.chordproapp.data.model.Song
+import com.example.chordproapp.data.model.SongDetail
+import com.example.chordproapp.data.api.ApiService
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import okhttp3.logging.HttpLoggingInterceptor
-import okhttp3.OkHttpClient
-import com.example.chordproapp.data.Song
-import com.example.chordproapp.data.SongDetail
-import com.example.chordproapp.data.ApiService
 
 class SongRepository(private val tokenProvider: () -> String?) {
     private val api: ApiService

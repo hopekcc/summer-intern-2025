@@ -7,8 +7,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import com.example.chordproapp.data.Song
-import com.example.chordproapp.data.SongRepository
+import com.example.chordproapp.data.model.Song
+import com.example.chordproapp.data.repository.SongRepository
 
 class SearchViewModel(private val idTokenProvider: () -> String?) : ViewModel() {
     private val repository = SongRepository(idTokenProvider)

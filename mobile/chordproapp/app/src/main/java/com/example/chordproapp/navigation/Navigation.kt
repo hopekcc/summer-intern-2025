@@ -1,6 +1,9 @@
 package com.example.chordproapp.navigation
 
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -54,12 +57,26 @@ fun AppNavigation(
         composable("newPlaylist") {
             NewPlaylist(navController, playlistViewModel)
         }
-        composable("playlist/{name}") { backStackEntry ->
-            val name = backStackEntry.arguments?.getString("name") ?: "Playlist Name"
-            Playlist(playlistName = name, songCount = 12, playlistViewModel,navController)
+        composable(
+            route = "playlist/{playlistId}",
+            arguments = listOf(navArgument("playlistId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val playlistId = backStackEntry.arguments?.getInt("playlistId") ?: 0
+            val playlists by playlistViewModel.playlists.collectAsState(initial = emptyList())
+            val playlist = playlists.find { it.id == playlistId }
+
+            if (playlist != null) {
+                Playlist(
+                    playlistId = playlist.id,
+                    playlistViewModel = playlistViewModel,
+                    navController = navController
+                )
+            } else {
+                Text("Loading playlist...")
+            }
+
         }
 
-        // Add this to your existing Navigation.kt file in the NavHost composable
         composable(
             route = "viewer/{songId}",
             arguments = listOf(navArgument("songId") { type = NavType.IntType })
