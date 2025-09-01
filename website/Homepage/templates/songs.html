@@ -1,51 +1,141 @@
 
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Available Songs - HOPEKCC Chord Pro</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .song-list { max-width: 800px; margin: 0 auto; }
+        .song-item { 
+            border: 1px solid #ddd; 
+            margin: 10px 0; 
+            padding: 15px; 
+            border-radius: 5px; 
+            background: #f9f9f9;
+        }
+        .song-id { 
+            font-family: monospace; 
+            background: #e0e0e0; 
+            padding: 2px 6px; 
+            border-radius: 3px; 
+            font-weight: bold;
+        }
+        .loading { text-align: center; padding: 20px; }
+        .error { color: red; text-align: center; padding: 20px; }
+        /* Added styles for copy button and navigation */
+        .copy-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-left: 10px;
+            font-size: 12px;
+        }
+        .copy-btn:hover { background: #0056b3; }
+        .nav-links {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .nav-links a {
+            background: #28a745;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 0 10px;
+        }
+        .nav-links a:hover { background: #1e7e34; }
+        .instructions {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="song-list">
+        <h1>Available Songs</h1>
+        
+        <!-- Added navigation links -->
+        <div class="nav-links">
+            <a href="/create">Create Room</a>
+            <a href="/join">Join Room</a>
+        </div>
+        
+        <!-- Added instructions -->
+        <div class="instructions">
+            <h3>How to use Song IDs:</h3>
+            <p>1. Create or join a room</p>
+            <p>2. Copy a Song ID from the list below</p>
+            <p>3. Paste it in the "Song ID" field in your room</p>
+            <p>4. Click "Share / Update" to load the song</p>
+        </div>
+        
+        <div id="loading" class="loading">Loading songs...</div>
+        <div id="error" class="error" style="display: none;"></div>
+        <div id="songs" style="display: none;"></div>
+    </div>
 
-{% block title %}All Songs{% endblock %}
+    <script>
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Song ID copied to clipboard: ' + text);
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('Song ID copied to clipboard: ' + text);
+            });
+        }
 
-{% block content %}
-<div class="song-container" style="padding: 2rem;">
-  <h2>  All Songs</h2>
-  <div id="song-list">
-    <!-- Songs will be inserted here by JS -->
-  </div>
-</div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-  document.addEventListener("DOMContentLoaded", async () => {
-    const token = localStorage.getItem("firebase_token");
-
-    if (!token) {
-      alert("Please login first.");
-      window.location.href = "/login";
-      return;
-    }
-
-    const response = await fetch("http://34.125.143.141:8000/songs/list", {
-      headers: {
-        Authorization: "Bearer " + token
-      }
-    });
-
-    if (!response.ok) {
-      alert("Failed to fetch songs.");
-      return;
-    }
-
-    const songs = await response.json();
-    const container = document.getElementById("song-list");
-
-    songs.forEach(song => {
-      const div = document.createElement("div");
-      div.className = "song-card";
-      div.innerHTML = `
-        <p><strong>${song.title}</strong></p>
-        <a href="/songs/${song.id}/view">View</a>
-      `;
-      container.appendChild(div);
-    });
-  });
-</script>
-{% endblock %}
+        // Fetch available songs from the API
+        fetch('/api/songs')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('loading').style.display = 'none';
+                
+                if (data.error) {
+                    document.getElementById('error').textContent = 'Error: ' + data.error;
+                    document.getElementById('error').style.display = 'block';
+                    return;
+                }
+                
+                const songsDiv = document.getElementById('songs');
+                songsDiv.style.display = 'block';
+                
+                if (Array.isArray(data) && data.length > 0) {
+                    data.forEach(song => {
+                        const songDiv = document.createElement('div');
+                        songDiv.className = 'song-item';
+                        const songId = song.id || song.song_id || 'Unknown ID';
+                        songDiv.innerHTML = `
+                            <h3>${song.title || 'Unknown Title'}</h3>
+                            <p><strong>Song ID:</strong> <span class="song-id">${songId}</span>
+                            <button class="copy-btn" onclick="copyToClipboard('${songId}')">Copy ID</button></p>
+                            <p><strong>Artist:</strong> ${song.artist || 'Unknown Artist'}</p>
+                            ${song.pages ? `<p><strong>Pages:</strong> ${song.pages}</p>` : ''}
+                        `;
+                        songsDiv.appendChild(songDiv);
+                    });
+                } else {
+                    songsDiv.innerHTML = '<p>No songs available or unexpected data format.</p>';
+                }
+            })
+            .catch(error => {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').textContent = 'Failed to load songs: ' + error.message;
+                document.getElementById('error').style.display = 'block';
+            });
+    </script>
+</body>
+</html>

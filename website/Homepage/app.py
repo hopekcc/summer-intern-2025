@@ -16,6 +16,7 @@ import datetime
 import random
 import string
 import requests  # NEW: for proxying to FastAPI
+import logging  # Added logging
 
 from flask import (
     Flask, render_template, request, send_from_directory,
@@ -27,6 +28,9 @@ import firebase_admin
 from firebase_admin import credentials, auth as admin_auth
 
 app = Flask(__name__)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 # Firebase Admin initialization
@@ -40,7 +44,11 @@ firebase_admin.initialize_app(cred)
 # -----------------------------------------------------------------------------
 def verify_session_cookie(session_cookie: str):
     """Verify a Firebase session cookie."""
-    return admin_auth.verify_session_cookie(session_cookie, check_revoked=True)
+    try:
+        return admin_auth.verify_session_cookie(session_cookie, check_revoked=True)
+    except Exception as e:
+        logger.error(f"Session cookie verification failed: {e}")
+        return None
 
 def current_user():
     """Return decoded user claims if a valid session cookie exists; otherwise None."""
@@ -49,7 +57,8 @@ def current_user():
         return None
     try:
         return verify_session_cookie(cookie)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Current user verification failed: {e}")
         return None
 
 @app.context_processor
@@ -62,7 +71,8 @@ def verify_id_token(id_token: str):
     """Verify a Firebase ID token; return claims or None on failure."""
     try:
         return admin_auth.verify_id_token(id_token)
-    except Exception:
+    except Exception as e:
+        logger.error(f"ID token verification failed: {e}")
         return None
 
 # Random Room Number Generator
@@ -169,7 +179,7 @@ def pdf_stream(song_id):
     if not claims:
         abort(401)
 
-    url = f"{BACKEND_BASE}/songs/{song_id}/pdf"
+    url = f"{BACKEND_BASE}/songs/{song_id}/image"
     headers = {"Authorization": f"Bearer {id_token}"}
 
     try:
@@ -226,14 +236,75 @@ def search_title():
 # -----------------------------------------------------------------------------
 @app.route("/api/rooms", methods=["POST"])
 def api_create_room():
-    """AJAX: create random room code and then come back JSON。"""
+    """AJAX: create random room code and create room in backend, then return JSON."""
     code = make_room_code()
-    return jsonify({"code": code})
+    
+    try:
+        id_token = _extract_bearer_from_auth_header()
+        if not id_token:
+            # Try to get from JSON body as fallback
+            data = request.get_json(silent=True) or {}
+            id_token = data.get("idToken")
+        
+        if id_token:
+            # Verify the token first
+            claims = verify_id_token(id_token)
+            if claims:
+                # First try: POST /rooms/{room_id} (RESTful approach)
+                url = f"{BACKEND_BASE}/rooms/{code}"
+                headers = {"Authorization": f"Bearer {id_token}", "Content-Type": "application/json"}
+                
+                logger.info(f"[DEBUG] Attempting room creation with POST /rooms/{code}")
+                backend_response = requests.post(url, headers=headers, json={}, timeout=10)
+                
+                if backend_response.status_code not in [200, 201]:
+                    # Second try: POST /rooms/ with room_id in body
+                    logger.info(f"[DEBUG] First attempt failed, trying POST /rooms/ with body")
+                    url = f"{BACKEND_BASE}/rooms/"
+                    room_data = {"room_id": code}
+                    backend_response = requests.post(url, headers=headers, json=room_data, timeout=10)
+                
+                logger.info(f"[DEBUG] Backend response: {backend_response.status_code} - {backend_response.text}")
+                
+                if backend_response.status_code in [200, 201]:
+                    logger.info(f"Successfully created room {code} in backend")
+                    return jsonify({"code": code, "created": True})
+                else:
+                    logger.warning(f"Backend room creation returned {backend_response.status_code}: {backend_response.text}")
+                    try:
+                        error_detail = backend_response.json()
+                        logger.warning(f"Backend error details: {error_detail}")
+                    except:
+                        pass
+                    # Still return the code even if backend creation failed
+                    return jsonify({"code": code, "created": False, "error": backend_response.text})
+            else:
+                logger.warning("Invalid ID token provided for room creation")
+                return jsonify({"code": code, "created": False, "error": "Invalid token"})
+        else:
+            logger.warning("No ID token provided for room creation")
+            return jsonify({"code": code, "created": False, "error": "No token provided"})
+            
+    except requests.RequestException as e:
+        logger.error(f"Failed to create room {code} in backend: {e}")
+        return jsonify({"code": code, "created": False, "error": str(e)})
+    except Exception as e:
+        logger.error(f"Unexpected error creating room {code}: {e}")
+        return jsonify({"code": code, "created": False, "error": str(e)})
 
 @app.route("/rooms/create")
 def create_room():
-    """Generate a random room number and jump to the corresponding room。"""
+    """Generate a random room number and jump to the corresponding room."""
     code = make_room_code()
+    
+    user = current_user()
+    if user:
+        try:
+            # Get a fresh ID token - this is tricky without frontend, so we'll create room on first access
+            logger.info(f"Room {code} will be created on first access")
+        except Exception as e:
+            logger.error(f"Error preparing room {code}: {e}")
+    
     return redirect(url_for("room_page", room_id=code))
 
 @app.route("/rooms/join", methods=["GET", "POST"])
@@ -247,7 +318,16 @@ def join_room():
 
 @app.route("/rooms/<room_id>")
 def room_page(room_id):
-    """room page。"""
+    """Room page - create room in backend if it doesn't exist."""
+    user = current_user()
+    if user:
+        try:
+            # We can't easily get a fresh ID token here, so the room will be created
+            # when the frontend makes its first API call with a valid token
+            logger.info(f"Room {room_id} page accessed, will be created on first API call")
+        except Exception as e:
+            logger.error(f"Error preparing room {room_id}: {e}")
+    
     return render_template("room.html", room_id=room_id)
 
 # -----------------------------------------------------------------------------
@@ -275,6 +355,226 @@ def login_page():
     if not force and current_user():
         return redirect(url_for("home"))
     return render_template("login.html")
+
+# -----------------------------------------------------------------------------
+# NEW: Get available songs from FastAPI
+# -----------------------------------------------------------------------------
+@app.route("/api/songs")
+def api_get_songs():
+    """Get list of available songs from FastAPI backend."""
+    try:
+        url = f"{BACKEND_BASE}/songs/"
+        logger.info(f"Fetching songs from {url}")
+        
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            songs_data = response.json()
+            logger.info(f"Successfully fetched {len(songs_data)} songs")
+            return jsonify(songs_data)
+        else:
+            logger.error(f"Failed to fetch songs: {response.status_code} - {response.text}")
+            return jsonify({"error": "Failed to fetch songs"}), response.status_code
+            
+    except requests.RequestException as e:
+        logger.error(f"Request to fetch songs failed: {e}")
+        return jsonify({"error": "Backend service unavailable"}), 502
+
+# -----------------------------------------------------------------------------
+# Room API proxies
+# -----------------------------------------------------------------------------
+def _extract_bearer_from_auth_header():
+    """Get 'Bearer xxx' from incoming request headers."""
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth.split(" ", 1)[1].strip()
+    return None
+
+@app.route("/rooms/<room_id>/song", methods=["POST"])
+def proxy_room_select_song(room_id):
+    """
+    Proxy: POST /rooms/{room_id}/song
+    Body:  {"song_id": "<id>"}
+    Auth:  front-end sends Authorization: Bearer <idToken>
+    """
+    id_token = _extract_bearer_from_auth_header()
+    if not id_token:
+        logger.warning(f"Missing Authorization header for room {room_id}")
+        return jsonify({"error": "Missing Authorization header"}), 401
+
+    claims = verify_id_token(id_token)
+    if not claims:
+        logger.warning(f"Invalid token for room {room_id}")
+        return jsonify({"error": "Invalid authentication token"}), 401
+
+    data = request.get_json(silent=True) or {}
+    song_id = data.get("song_id", "").strip()
+    if not song_id:
+        logger.warning(f"Empty song_id for room {room_id}")
+        return jsonify({"error": "Song ID is required"}), 400
+
+    try:
+        logger.info(f"[DEBUG] Ensuring room {room_id} exists before song selection")
+        
+        # First try: POST /rooms/{room_id}
+        create_url = f"{BACKEND_BASE}/rooms/{room_id}"
+        create_headers = {"Authorization": f"Bearer {id_token}", "Content-Type": "application/json"}
+        
+        logger.info(f"[DEBUG] Attempting room creation with POST /rooms/{room_id}")
+        create_response = requests.post(create_url, headers=create_headers, json={}, timeout=10)
+        
+        if create_response.status_code not in [200, 201, 409]:
+            # Second try: POST /rooms/ with room_id in body
+            logger.info(f"[DEBUG] First attempt failed, trying POST /rooms/ with body")
+            create_url = f"{BACKEND_BASE}/rooms/"
+            create_data = {"room_id": room_id}
+            create_response = requests.post(create_url, headers=create_headers, json=create_data, timeout=10)
+        
+        logger.info(f"[DEBUG] Room creation response: {create_response.status_code} - {create_response.text}")
+        
+        if create_response.status_code in [200, 201]:
+            logger.info(f"Room {room_id} created successfully")
+        elif create_response.status_code == 409:
+            logger.info(f"Room {room_id} already exists")
+        else:
+            logger.warning(f"Room creation returned {create_response.status_code}: {create_response.text}")
+            
+    except requests.RequestException as e:
+        logger.error(f"Failed to ensure room {room_id} exists: {e}")
+        # Continue anyway, maybe the room already exists
+
+    url = f"{BACKEND_BASE}/rooms/{room_id}/song"
+    logger.info(f"[DEBUG] Proxying song selection to {url} with song_id: {song_id}")
+    
+    try:
+        upstream = requests.post(
+            url,
+            headers={"Authorization": f"Bearer {id_token}", "Content-Type": "application/json"},
+            json={"song_id": song_id},
+            timeout=20,
+        )
+        
+        logger.info(f"[DEBUG] Song selection response: {upstream.status_code} - {upstream.text}")
+        
+        if upstream.status_code != 200:
+            error_text = upstream.text
+            logger.error(f"Backend returned {upstream.status_code}: {error_text}")
+            
+            try:
+                error_json = upstream.json()
+                error_detail = error_json.get("detail", error_text)
+                return jsonify({"error": f"Failed to select song ({upstream.status_code}): {error_detail}"}), upstream.status_code
+            except:
+                return jsonify({"error": f"Failed to select song ({upstream.status_code}): {error_text}"}), upstream.status_code
+            
+        logger.info(f"Successfully selected song {song_id} for room {room_id}")
+        return jsonify({"success": True, "song_id": song_id})
+        
+    except requests.RequestException as e:
+        logger.error(f"Request to backend failed: {e}")
+        return jsonify({"error": "Backend service unavailable"}), 502
+
+@app.route("/rooms/<room_id>/page", methods=["POST"])
+def proxy_room_set_page(room_id):
+    """
+    Proxy: POST /rooms/{room_id}/page
+    Body:  {"page": <int>}
+    """
+    id_token = _extract_bearer_from_auth_header()
+    if not id_token:
+        logger.warning(f"Missing Authorization header for room {room_id}")
+        return jsonify({"error": "Missing Authorization header"}), 401
+
+    claims = verify_id_token(id_token)
+    if not claims:
+        logger.warning(f"Invalid token for room {room_id}")
+        return jsonify({"error": "Invalid authentication token"}), 401
+
+    data = request.get_json(silent=True) or {}
+    page = data.get("page")
+    if page is None or not isinstance(page, int) or page < 1:
+        logger.warning(f"Invalid page number for room {room_id}: {page}")
+        return jsonify({"error": "Valid page number is required"}), 400
+
+    url = f"{BACKEND_BASE}/rooms/{room_id}/page"
+    logger.info(f"Proxying page setting to {url} with page: {page}")
+    
+    try:
+        upstream = requests.post(
+            url,
+            headers={"Authorization": f"Bearer {id_token}", "Content-Type": "application/json"},
+            json={"page": page},
+            timeout=20,
+        )
+        
+        if upstream.status_code != 200:
+            error_text = upstream.text
+            logger.error(f"Backend returned {upstream.status_code}: {error_text}")
+            return jsonify({"error": f"Backend error: {error_text}"}), upstream.status_code
+            
+        logger.info(f"Successfully set page {page} for room {room_id}")
+        return jsonify({"success": True, "page": page})
+        
+    except requests.RequestException as e:
+        logger.error(f"Request to backend failed: {e}")
+        return jsonify({"error": "Backend service unavailable"}), 502
+
+@app.route("/rooms/<room_id>/image", methods=["GET"])
+def proxy_room_current_image(room_id):
+    """
+    Proxy: GET /rooms/{room_id}/image
+    Query: ?token=<idToken>[&page=<int>]  (page : optional)
+    - Verify token server-side (optional but recommended)
+    - Forward to FastAPI with Authorization header
+    - Stream image back (image/png or image/jpeg)
+    """
+   
+    id_token = request.args.get("token")
+    if not id_token:
+        id_token = _extract_bearer_from_auth_header()
+    if not id_token:
+        logger.warning(f"Missing token for room {room_id} image request")
+        abort(401, description="Missing token")
+
+    claims = verify_id_token(id_token)
+    if not claims:
+        logger.warning(f"Invalid token for room {room_id} image request")
+        abort(401, description="Invalid token")
+
+    params = {}
+    page = request.args.get("page")
+    if page:
+        try:
+            page_num = int(page)
+            if page_num < 1:
+                logger.warning(f"Invalid page number for room {room_id}: {page}")
+                abort(400, description="Page number must be positive")
+            params["page"] = page_num
+        except ValueError:
+            logger.warning(f"Invalid page format for room {room_id}: {page}")
+            abort(400, description="Invalid page format")
+
+    url = f"{BACKEND_BASE}/rooms/{room_id}/image"
+    logger.info(f"Proxying image request to {url} with params: {params}")
+    
+    try:
+        upstream = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {id_token}"},
+            params=params,
+            stream=True,
+            timeout=30,
+        )
+    except requests.RequestException as e:
+        logger.error(f"Request to backend failed: {e}")
+        abort(502, description="Backend service unavailable")
+
+    if upstream.status_code != 200:
+        logger.error(f"Backend returned {upstream.status_code} for image request")
+        abort(upstream.status_code)
+
+    content_type = upstream.headers.get("Content-Type", "image/png")
+    logger.info(f"Successfully proxying image for room {room_id}, content-type: {content_type}")
+    return Response(upstream.iter_content(8192), content_type=content_type)
 
 # -----------------------------------------------------------------------------
 # Run

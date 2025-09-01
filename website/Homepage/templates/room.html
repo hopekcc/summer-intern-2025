@@ -7,7 +7,7 @@
   <h1 style="margin-bottom:0.25rem;">Room: <code>{{ room_id }}</code></h1>
   <p>Share this code with your friends so everyone can view the same song and page together.</p>
 
-  <!-- PDF Viewer -->
+   <!-- Image Viewer (This is used to replace  PDF iframe) -->
   <div style="margin:1rem 0;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
       <strong>Now Showing</strong>
@@ -18,17 +18,13 @@
       </span>
     </div>
 
-    <iframe id="pdf-frame"
-            title="ChordPro PDF"
-            width="100%"
-            height="640"
-            style="border:1px solid #e5e7eb;border-radius:8px;background:#fff"
-            src="">
-    </iframe>
-
-    <p id="pdf-hint" style="color:#777;margin-top:0.5rem">
-      Select a song to load its PDF from backend.
-    </p>
+    <div style="border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;justify-content:center;align-items:center;min-height:640px;">
+      <img id="page-image"
+           alt="ChordPro page"
+           style="max-width:100%;max-height:100%;display:none"
+           loading="lazy">
+      <div id="img-hint" style="color:#777;">Select a song to load its image pages.</div>
+    </div>
   </div>
 
   <!-- Host Controls -->
@@ -46,6 +42,8 @@
       <button id="prev"  style="padding:0.45rem 0.8rem;">Prev</button>
       <button id="next"  style="padding:0.45rem 0.8rem;">Next</button>
     </div>
+    <!-- Added error display area -->
+    <div id="error-display" style="margin-top:0.5rem;padding:0.5rem;background:#fee;border:1px solid #fcc;border-radius:4px;color:#c33;display:none;"></div>
   </details>
 
   <p style="margin-top:2rem;"><a href="/rooms/join">← Back to Join</a></p>
@@ -61,7 +59,12 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
   import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
 
-  // ---- Firebase config (your project) ----
+  // ===== Socket 配置（不会用就先关掉）=====
+  const ENABLE_SOCKET = false;                        // 需要实时同步就改成 true
+  const SOCKET_URL    = "http://127.0.0.1:8000";     // 你们的 socket 服务器地址（如 http://34.125.143.141:8000）
+  const SOCKET_PATH   = "/socket.io";                // 如果服务端自定义了路径就改它，如 "/ws/socket.io"
+
+  // ===== Firebase =====
   const firebaseConfig = {
     apiKey: "AIzaSyAQ3r-8kqsWOgBkWRKs-bApV33oeu-AICs",
     authDomain: "hopekcc-2024-summer-intern-api.firebaseapp.com",
@@ -70,15 +73,16 @@
     messagingSenderId: "172531116306",
     appId: "1:172531116306:web:d898ae28b5f79a425babcb"
   };
-  const app = initializeApp(firebaseConfig);
+  const app  = initializeApp(firebaseConfig);
   const auth = getAuth(app);
 
-  // ---- Jinja variables & elements ----
+  // ===== Jinja + DOM =====
   const roomId  = "{{ room_id }}";
   const vSong   = document.getElementById("v-song");
   const vPage   = document.getElementById("v-page");
-  const pdf     = document.getElementById("pdf-frame");
-  const hint    = document.getElementById("pdf-hint");
+  const imgEl   = document.getElementById("page-image");
+  const hintEl  = document.getElementById("img-hint");
+  const errorEl = document.getElementById("error-display");
 
   const songInput = document.getElementById("songId");
   const pageInput = document.getElementById("page");
@@ -86,97 +90,310 @@
   const prevBtn   = document.getElementById("prev");
   const nextBtn   = document.getElementById("next");
 
-  let socket = null;
   let idToken = null;
+  let socket  = null;
+  let navigating = false;
 
-  // ---- Apply state to UI + set iframe src via proxy ----
+  console.log("[v0] Room initialized:", roomId); // Added room initialization logging
+
+  function showError(message) {
+    console.log("[v0] Showing error:", message); // Added error display logging
+    errorEl.textContent = message;
+    errorEl.style.display = "block";
+    setTimeout(() => {
+      errorEl.style.display = "none";
+    }, 5000);
+  }
+
+  function hideError() {
+    errorEl.style.display = "none";
+  }
+
+  async function refreshTokenIfNeeded() {
+    console.log("[v0] Refreshing token, current user:", !!auth.currentUser); // Added token refresh logging
+    if (!auth.currentUser) return null;
+    try {
+      // Force refresh token to ensure it's valid
+      idToken = await auth.currentUser.getIdToken(true);
+      console.log("[v0] Token refreshed successfully, length:", idToken?.length); // Added token success logging
+      return idToken;
+    } catch (error) {
+      console.error("[v0] Failed to refresh token:", error); // Added token error logging
+      showError("Authentication failed. Please refresh the page.");
+      return null;
+    }
+  }
+
+  // ===== Image URL（按房间取图；破缓存带 t）=====
+  function buildImageURL(page, token) {
+    const url = `/rooms/${encodeURIComponent(roomId)}/image?page=${page}&token=${encodeURIComponent(token)}&t=${Date.now()}`;
+    console.log("[v0] Built image URL:", url); // Added image URL logging
+    return url;
+  }
+
+  // ===== 统一渲染（img 版本；不再引用 iframe）=====
   function applyState(state) {
     const song = (state.songId || "").trim();
     const page = Math.max(1, parseInt(state.page || 1, 10));
+    console.log("[v0] Applying state:", { song, page }); // Added state application logging
     vSong.textContent = song || "—";
     vPage.textContent = page;
 
-    // If no song or no token, clear src + show hint
-    if (!song || !idToken) {
-      pdf.removeAttribute("src");
-      hint.textContent = !idToken
-        ? "Please sign in to view the PDF."
-        : "Select a song to load its PDF.";
+    if (!idToken) {
+      console.log("[v0] No token available for image display"); // Added no token logging
+      imgEl.style.display = "none";
+      imgEl.removeAttribute("src");
+      hintEl.textContent = "Please sign in to view the images.";
       return;
     }
-    hint.textContent = "";
+    if (!song) {
+      console.log("[v0] No song selected for image display"); // Added no song logging
+      imgEl.style.display = "none";
+      imgEl.removeAttribute("src");
+      hintEl.textContent = "Select a song to load its image pages.";
+      return;
+    }
 
-    // Use the Flask proxy so the server can attach Authorization header to FastAPI
-    // NOTE: Your FastAPI does not support 'page'; we still include it for client-side clarity.
-    const src = `/pdf/stream/${encodeURIComponent(song)}?page=${page}&token=${encodeURIComponent(idToken)}`;
-    pdf.src = src;
-  }
+    hintEl.textContent = "Loading…";
+    imgEl.style.display = "none";
 
-  // ---- Local-only update (when not using socket) ----
-  function localUpdate() {
-    const song = songInput.value.trim();
-    const page = Math.max(1, parseInt(pageInput.value || "1", 10));
-    applyState({ songId: song, page });
-  }
-
-  // Default UI
-  applyState({ songId: "", page: 1 });
-
-  // ---- Host controls wiring ----
-  shareBtn.addEventListener("click", () => {
-    const payload = {
-      code: roomId,
-      songId: songInput.value.trim(),
-      page: parseInt(pageInput.value || "1", 10),
-      idToken, // include for server-side validation if your socket server needs it
+    const url = buildImageURL(page, idToken);
+    const pre = new Image();
+    pre.onload = () => {
+      console.log("[v0] Image loaded successfully:", url); // Added image load success logging
+      imgEl.src = url;
+      imgEl.style.display = "block";
+      hintEl.textContent = "";
+      navigating = false;
+      hideError(); // Hide error on successful load
     };
+    pre.onerror = () => {
+      console.error("[v0] Failed to load image:", url); // Enhanced image error logging
+      hintEl.textContent = "This page is not available.";
+      imgEl.style.display = "none";
+      imgEl.removeAttribute("src");
+      navigating = false;
+    };
+    pre.src = url;
+  }
 
-    if (socket && socket.connected && idToken) {
-      socket.emit("update_state", payload);
-    } else {
-      localUpdate();
+  // ===== 后端 API（房间）=====
+  async function apiSelectSong(songId) {
+    console.log("[v0] apiSelectSong called with:", songId); // Added API call logging
+    
+    if (!songId || songId.trim().length === 0) {
+      throw new Error("Song ID cannot be empty");
+    }
+
+    const token = await refreshTokenIfNeeded();
+    if (!token) {
+      throw new Error("Authentication failed");
+    }
+
+    const requestUrl = `/rooms/${encodeURIComponent(roomId)}/song`;
+    const requestBody = { song_id: songId.trim() };
+    const requestHeaders = { 
+      "Content-Type": "application/json", 
+      "Authorization": `Bearer ${token}` 
+    };
+    
+    console.log("[v0] Making song selection request:", { // Added detailed request logging
+      url: requestUrl,
+      body: requestBody,
+      headers: { ...requestHeaders, Authorization: `Bearer ${token.substring(0, 20)}...` }
+    });
+
+    const res = await fetch(requestUrl, {
+      method: "POST",
+      headers: requestHeaders,
+      body: JSON.stringify(requestBody)
+    });
+    
+    console.log("[v0] Song selection response:", { // Added detailed response logging
+      status: res.status,
+      statusText: res.statusText,
+      ok: res.ok
+    });
+    
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => "Unknown error");
+      console.error("[v0] Select song failed:", res.status, errorText); // Enhanced error logging
+      throw new Error(`Failed to select song (${res.status}): ${errorText}`);
+    }
+    
+    const responseData = await res.json().catch(() => ({}));
+    console.log("[v0] Song selection successful:", responseData); // Added success response logging
+    return responseData;
+  }
+
+  async function apiSetPage(page) {
+    console.log("[v0] apiSetPage called with:", page); // Added page API logging
+    
+    const pageNum = Math.max(1, parseInt(page, 10));
+    if (isNaN(pageNum)) {
+      throw new Error("Invalid page number");
+    }
+
+    const token = await refreshTokenIfNeeded();
+    if (!token) {
+      throw new Error("Authentication failed");
+    }
+
+    const requestUrl = `/rooms/${encodeURIComponent(roomId)}/page`;
+    const requestBody = { page: pageNum };
+    
+    console.log("[v0] Making page update request:", { // Added page request logging
+      url: requestUrl,
+      body: requestBody
+    });
+
+    const res = await fetch(requestUrl, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json", 
+        "Authorization": `Bearer ${token}` 
+      },
+      body: JSON.stringify(requestBody)
+    });
+    
+    console.log("[v0] Page update response:", { // Added page response logging
+      status: res.status,
+      statusText: res.statusText,
+      ok: res.ok
+    });
+    
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => "Unknown error");
+      console.error("[v0] Set page failed:", res.status, errorText); // Enhanced page error logging
+      throw new Error(`Failed to set page (${res.status}): ${errorText}`);
+    }
+    
+    const responseData = await res.json().catch(() => ({}));
+    console.log("[v0] Page update successful:", responseData); // Added page success logging
+    return responseData;
+  }
+
+  // ===== Host 控件 =====
+  shareBtn.addEventListener("click", async () => {
+    const song = (songInput.value || "").trim();
+    const page = Math.max(1, parseInt(pageInput.value || "1", 10));
+    
+    console.log("[v0] Share button clicked:", { song, page, hasToken: !!idToken }); // Added share button logging
+    
+    if (!idToken) { 
+      console.log("[v0] No token available for sharing"); // Added no token logging
+      showError("Please sign in first.");
+      return; 
+    }
+
+    shareBtn.disabled = true;
+    shareBtn.textContent = "Updating...";
+    hideError();
+
+    try {
+      console.log("[v0] Starting room update process"); // Added update process logging
+      
+      if (song) {
+        console.log("[v0] Selecting song:", song); // Enhanced song selection logging
+        await apiSelectSong(song);
+        console.log("[v0] Song selection completed successfully"); // Added completion logging
+      }
+      
+      console.log("[v0] Setting page:", page); // Enhanced page setting logging
+      await apiSetPage(page);
+      console.log("[v0] Page setting completed successfully"); // Added completion logging
+
+      if (ENABLE_SOCKET && socket && socket.connected) {
+        console.log("[v0] Emitting socket update"); // Added socket logging
+        socket.emit("update_state", { code: roomId, songId: song, page, idToken });
+      } else {
+        console.log("[v0] Applying state locally (no socket)"); // Added local state logging
+        applyState({ songId: song, page });
+      }
+      
+      console.log("[v0] Room state updated successfully"); // Enhanced success logging
+    } catch (error) {
+      console.error("[v0] Update failed with error:", error); // Enhanced error logging
+      showError(`Update failed: ${error.message}`);
+    } finally {
+      shareBtn.disabled = false;
+      shareBtn.textContent = "Share / Update";
+      console.log("[v0] Share button reset"); // Added button reset logging
     }
   });
 
   prevBtn.addEventListener("click", () => {
-    pageInput.value = Math.max(1, (parseInt(pageInput.value || "1", 10) - 1));
+    if (navigating) return;
+    const curr = Math.max(1, parseInt(pageInput.value || "1", 10));
+    if (curr === 1) return;
+    navigating = true;
+    pageInput.value = curr - 1;
     shareBtn.click();
   });
 
   nextBtn.addEventListener("click", () => {
-    pageInput.value = parseInt(pageInput.value || "1", 10) + 1;
+    if (navigating) return;
+    const curr = Math.max(1, parseInt(pageInput.value || "1", 10));
+    navigating = true;
+    pageInput.value = curr + 1;
     shareBtn.click();
   });
 
-  // ---- Auth gate: wait for login, then get token, then connect socket ----
+  // ===== 登录 & 首帧 & Socket（可关）=====
   onAuthStateChanged(auth, async (user) => {
+    console.log("[v0] Auth state changed:", !!user); // Added auth state logging
+    
     if (!user) {
+      console.log("[v0] No user authenticated"); // Added no user logging
       idToken = null;
-      hint.textContent = "Please sign in to view and sync the PDF.";
-      pdf.removeAttribute("src");
+      hintEl.textContent = "Please sign in to view and sync images.";
+      imgEl.style.display = "none";
+      imgEl.removeAttribute("src");
+      return;
+    }
+    
+    try {
+      console.log("[v0] Getting ID token for authenticated user"); // Added token getting logging
+      idToken = await user.getIdToken(true);
+      console.log("[v0] User authenticated successfully, token length:", idToken?.length); // Enhanced auth success logging
+    } catch (error) {
+      console.error("[v0] Failed to get ID token:", error); // Enhanced token error logging
+      showError("Authentication failed. Please refresh the page.");
       return;
     }
 
-    // Always get a fresh token so backend verification succeeds
-    idToken = await user.getIdToken(true);
+    // 首帧（即使没 socket 也能看）
+    console.log("[v0] Applying initial state"); // Added initial state logging
+    applyState({ songId: songInput.value.trim(), page: Math.max(1, parseInt(pageInput.value || "1", 10)) });
 
-    // Start Socket.IO only after we have a token
-    socket = io();
+    if (!ENABLE_SOCKET || !window.io) return;
+
+    socket = io(SOCKET_URL, {
+      path: SOCKET_PATH,
+      transports: ["websocket"],
+      withCredentials: true
+    });
     socket.on("connect", () => {
+      console.log("Socket connected"); // Added logging
       socket.emit("join_room", { code: roomId, idToken });
     });
-
     socket.on("sync_state", (state) => {
-      applyState(state);
-      if (songInput) songInput.value = state.songId || "";
-      if (pageInput) pageInput.value = state.page || 1;
+      console.log("Received sync_state:", state); // Added logging
+      if (state.songId !== undefined) songInput.value = state.songId || "";
+      if (state.page   !== undefined) pageInput.value = state.page || 1;
+      applyState({ songId: songInput.value.trim(), page: parseInt(pageInput.value, 10) });
     });
-
-    socket.on("error_msg", (e) => console.warn("socket error:", e?.message || e));
-
+    socket.on("error_msg", (e) => {
+      console.warn("Socket error:", e?.message || e);
+      showError(`Socket error: ${e?.message || e}`); // Show socket errors to user
+    });
+    socket.on("disconnect", () => {
+      console.log("Socket disconnected"); // Added logging
+    });
     window.addEventListener("beforeunload", () => {
       try { socket.emit("leave_room", { code: roomId }); } catch {}
     });
   });
 </script>
+
 {% endblock %}
