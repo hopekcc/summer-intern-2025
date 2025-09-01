@@ -8,6 +8,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import com.example.chordproapp.data.model.Song
+import com.example.chordproapp.data.repository.SearchType
 import com.example.chordproapp.data.repository.SongRepository
 
 class SearchViewModel(private val idTokenProvider: () -> String?) : ViewModel() {
@@ -37,6 +38,7 @@ class SearchViewModel(private val idTokenProvider: () -> String?) : ViewModel() 
             _error.value = null
 
             try {
+                // only one arg now
                 _searchResults.value = repository.searchSongs(query)
             } catch (e: Exception) {
                 _error.value = "Search failed: ${e.message}"
@@ -46,6 +48,8 @@ class SearchViewModel(private val idTokenProvider: () -> String?) : ViewModel() 
             }
         }
     }
+
+
 
     fun loadAllSongs() {
         viewModelScope.launch {

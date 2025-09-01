@@ -381,7 +381,12 @@ fun Playlist(
                     )
                     //delete playlist button
                     Button(
-                        onClick = { playlistViewModel.deletePlaylist(playlist.id) },
+                        onClick = {
+                            playlistViewModel.deletePlaylist(playlist.id)
+                            navController.navigate("allPlaylists") {
+                                popUpTo("playlist/${playlist.id}") { inclusive = true }
+                            }
+                        },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.surface,
                             contentColor = MaterialTheme.colorScheme.error
@@ -474,12 +479,9 @@ fun AllPlaylists(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(bottom = 20.dp)
                 ){
-                    BackButton {
-                        navController.navigate("profile") {
-                            popUpTo("allPlaylists") { inclusive = true }
-                        }
-                    }
-
+                    BackButton { navController.navigate("profile") {
+                        popUpTo("allPlaylists") { inclusive = true }
+                    }}
                     Text(
                         "All Sheet Collections",
                         style = MaterialTheme.typography.headlineLarge,

@@ -29,16 +29,8 @@ fun SearchScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState(initial = null)
 
-    LaunchedEffect(Unit) {
-        viewModel.loadAllSongs()
-    }
-
     LaunchedEffect(query) {
-        if (query.isEmpty()) {
-            viewModel.loadAllSongs()
-        } else {
-            viewModel.searchSongs(query)
-        }
+        viewModel.searchSongs(query)
     }
 
     Scaffold(

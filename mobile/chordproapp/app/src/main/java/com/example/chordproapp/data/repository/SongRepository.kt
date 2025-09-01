@@ -1,13 +1,20 @@
 package com.example.chordproapp.data.repository
 
 import com.example.chordproapp.data.AuthInterceptor
+import com.example.chordproapp.data.api.ApiService
 import com.example.chordproapp.data.model.Song
 import com.example.chordproapp.data.model.SongDetail
-import com.example.chordproapp.data.api.ApiService
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+
+enum class SearchType {
+    BASIC,
+    SUBSTRING,
+    SIMILARITY,
+    FULL_TEXT
+}
 
 class SongRepository(private val tokenProvider: () -> String?) {
     private val api: ApiService
@@ -19,7 +26,7 @@ class SongRepository(private val tokenProvider: () -> String?) {
 
         val client = OkHttpClient.Builder()
             .addInterceptor(logging)
-            .addInterceptor(AuthInterceptor(tokenProvider)) // <-- inject token automatically
+            .addInterceptor(AuthInterceptor(tokenProvider))
             .build()
 
         api = Retrofit.Builder()
@@ -32,12 +39,13 @@ class SongRepository(private val tokenProvider: () -> String?) {
 
     suspend fun searchSongs(query: String): List<Song> {
         return try {
-            val response = api.searchSongs(query)
+            val response = api.similaritySearch(query)
             if (response.isSuccessful) response.body() ?: emptyList() else emptyList()
         } catch (e: Exception) {
             emptyList()
         }
     }
+
 
     suspend fun getAllSongs(): List<Song> {
         return try {
@@ -69,5 +77,4 @@ class SongRepository(private val tokenProvider: () -> String?) {
             null
         }
     }
-
 }
