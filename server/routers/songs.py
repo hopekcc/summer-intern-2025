@@ -216,8 +216,8 @@ def get_song_page_image(
 
 @router.get("/search/substring", response_model=None)
 async def search_substring(
-    q: str = Query(..., min_length=1),
-    limit: int = 10,
+    q: str = Query(..., min_length=1, max_length=100),
+    limit: int = Query(10, ge=1, le=100),
     current_user=Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -227,8 +227,8 @@ async def search_substring(
 
 @router.get("/search/similarity", response_model=None)
 async def search_similarity(
-    q: str = Query(..., min_length=1),
-    limit: int = 10,
+    q: str = Query(..., min_length=1, max_length=100),
+    limit: int = Query(10, ge=1, le=100),
     current_user=Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -238,8 +238,8 @@ async def search_similarity(
 
 @router.get("/search/text", response_model=None)
 async def search_text(
-    q: str = Query(..., min_length=1),
-    limit: int = 10,
+    q: str = Query(..., min_length=1, max_length=100),
+    limit: int = Query(10, ge=1, le=100),
     current_user=Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):

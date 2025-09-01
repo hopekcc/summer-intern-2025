@@ -4,3 +4,8 @@
 # Firebase / service keys
 **/serviceAccountKey.json
 *.secret.json
+.github/secrets.env
+__pycache__/
+*.pyc
+.DS_Store
+node_modules/
