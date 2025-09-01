@@ -1,0 +1,24 @@
+
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<section class="min-h-screen bg-gray-50 py-8">
+  <div class="max-w-md mx-auto bg-white rounded-lg shadow-sm p-6">
+    <h1 class="text-2xl font-semibold text-gray-900 mb-4">Dashboard</h1>
+    
+    <div class="mb-6">
+      <p class="text-gray-600 mb-3">Welcome, {{ user.email }}!</p>
+      
+      <div class="space-y-2 text-sm text-gray-700">
+        <div>User ID: {{ user.uid }}</div>
+        <div>Email Verified: {{ user.email_verified }}</div>
+      </div>
+    </div>
+    
+    <a href="{{ url_for('logout') }}" 
+       class="inline-block bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded transition-colors">
+      Logout
+    </a>
+  </div>
+</section>
+{% endblock %}

@@ -5,3 +5,15 @@ __pycache__/
 *.pyc
 .DS_Store
 node_modules/
+
+# macOS
+.DS_Store
+**/.DS_Store
+# GCP keys
+*serviceAccountKey*.json
+
+# macOS junk
+.DS_Store
+**/.DS_Store
+**/._*
+__MACOSX/

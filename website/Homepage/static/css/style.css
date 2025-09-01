@@ -1,10 +1,29 @@
+/* ===== Base ===== */
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; /* keep from FIRST */
   margin: 0;
   background-color: #f9fefc;
   color: #2b2f78;
 }
 
+a {
+  text-decoration: none;
+  color: #2b2f78;
+  font-weight: bold;
+}
+a:hover { text-decoration: underline; }
+
+textarea {
+  font-family: monospace;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 0.5rem;
+  width: 100%;
+  max-width: 600px;
+}
+
+/* ===== Navbar ===== */
 .navbar {
   display: flex;
   align-items: center;
@@ -21,15 +40,21 @@ body {
   scrollbar-gutter: stable both-edges;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
+  color: #2b2f78; /* from SECOND, non-conflicting */
 }
 
-.navbar .logo {
-  flex: 0 0 auto;
+/* Supports both .logo and .navbar .logo */
+.logo {
+  font-size: 3rem;         /* from SECOND */
+  font-weight: bold;
+  color: #2b2f78;
+  letter-spacing: 0.5px;
 }
+.navbar .logo { flex: 0 0 auto; }
 .navbar .logo a {
   display: block;
   margin: 0;
-  font-size: 36px;
+  font-size: 36px;         /* FIRST keeps this for the anchor inside navbar */
   line-height: 1.05;
   font-weight: 800;
   color: #2b2f78;
@@ -41,75 +66,14 @@ body {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 1.1rem;
+  gap: 1.1rem;              /* FIRST */
   margin: 0;
   padding: 0;
   list-style: none;
-  white-space: nowrap;   /* keep everything on one row */
-  flex: 0 0 auto;        /* size to its contents */
-  min-width: max-content;/* never shrink below full width of links */
+  white-space: nowrap;      /* keep on one row */
+  flex: 0 0 auto;           /* size to contents */
+  min-width: max-content;   /* never shrink below links width */
 }
-
-/* Horizontal scrollbar only */
-.nav-links::-webkit-scrollbar {
-  width: 0;
-  height: 6px;
-}
-.nav-links::-webkit-scrollbar-thumb {
-  background: rgba(0,0,0,0.2);
-  border-radius: 3px;
-}
-.nav-links::-webkit-scrollbar-track {
-  background: rgba(0,0,0,0.05);
-}
-
-/* Dropdown container - SINGLE DEFINITION */
-.nav-links .dropdown {
-  position: relative;
-  z-index: 100;
-}
-
-/* Style & hide panel by default - SINGLE DEFINITION */
-.dropdown-content {
-  display: none;
-  position: fixed; /* Changed from absolute to fixed */
-  background: #fff;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-  min-width: 160px;
-  white-space: nowrap;    /* keep each item one line */
-  z-index: 9999; /* Higher z-index */
-  padding: 0.5rem 0; /* Add some vertical padding */
-}
-
-/* Show on hover - Enhanced */
-.dropdown:hover .dropdown-content,
-.dropdown-content:hover {
-  display: block;
-}
-
-/* Make sure the dropdown trigger area is large enough */
-.dropdown > a {
-  display: block;
-  padding: 0.5rem 0;
-}
-
-/* Style the dropdown items */
-.dropdown-content a {
-  display: block;
-  padding: 0.75rem 1rem;
-  color: #2b2f78;
-  text-decoration: none;
-  font-weight: 500;
-  transition: background-color 0.2s ease;
-}
-
-.dropdown-content a:hover {
-  background-color: #f0f4f8;
-  text-decoration: none;
-}
-
 .nav-links a {
   font-size: 16px;
   white-space: nowrap;
@@ -118,7 +82,51 @@ body {
   font-weight: bold;
 }
 
-/* Buttons */
+/* Horizontal scrollbar only (FIRST) */
+.nav-links::-webkit-scrollbar { width: 0; height: 6px; }
+.nav-links::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 3px; }
+.nav-links::-webkit-scrollbar-track { background: rgba(0,0,0,0.05); }
+
+/* ===== Dropdowns (preserve FIRST behavior) ===== */
+/* Single definition for container */
+.nav-links .dropdown,
+.dropdown { /* allow use outside nav-links too */
+  position: relative;
+  z-index: 100;
+}
+
+/* Style & hide panel by default (FIRST keeps fixed positioning) */
+.dropdown-content {
+  display: none;
+  position: fixed; /* FIRST wins over SECOND's absolute */
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+  min-width: 160px;
+  white-space: nowrap;
+  z-index: 9999;
+  padding: 0.5rem 0;
+}
+.dropdown:hover .dropdown-content,
+.dropdown-content:hover { display: block; }
+
+.dropdown > a { display: block; padding: 0.5rem 0; }
+
+.dropdown-content a {
+  display: block;
+  padding: 0.75rem 1rem;  /* FIRST */
+  color: #2b2f78;
+  text-decoration: none;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+}
+.dropdown-content a:hover {
+  background-color: #f0f4f8; /* FIRST (vs SECOND’s #f1f1f1) */
+  text-decoration: none;
+}
+
+/* ===== Buttons ===== */
 .btn, .btn-primary {
   padding: 0.5rem 1rem;
   text-decoration: none;
@@ -126,11 +134,27 @@ body {
   font-weight: bold;
 }
 .btn-primary {
-  background-color: #2b2f78;
-  color: white;
+  background-color: #2b2f78;  /* FIRST global palette */
+  color: #fff;
 }
 
-/* Welcome */
+/* Auth-specific button style (namespaced so it doesn’t override global) */
+.auth-form-container .btn-primary {
+  background: #3b4f87;     /* from FIRST’s later block */
+  color: #fff;
+  border: none;
+  padding: 1rem 1.5rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color .2s;
+  margin-top: 1rem;
+}
+.auth-form-container .btn-primary:hover { background:#2d3a66; }
+.auth-form-container .btn-primary:active { transform:none; }
+
+/* ===== Welcome / Hero ===== */
 .welcome-section {
   display: flex;
   justify-content: space-between;
@@ -142,7 +166,7 @@ body {
   font-weight: bold;
 }
 .welcome-text h1 {
-  font-size: 3rem;
+  font-size: 3rem;  /* FIRST wins over SECOND’s 4rem */
   color: #2b2f78;
   font-weight: bold;
 }
@@ -152,30 +176,10 @@ body {
   font-weight: bold;
 }
 
-/* Misc */
-.screenshot img {
-  max-width: 100%;
-  height: auto;
-}
-textarea {
-  font-family: monospace;
-  font-size: 1rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  padding: 0.5rem;
-  width: 100%;
-  max-width: 600px;
-}
-a {
-  text-decoration: none;
-  color: #2b2f78;
-  font-weight: bold;
-}
-a:hover {
-  text-decoration: underline;
-}
+/* ===== Images ===== */
+.screenshot img { max-width: 100%; height: auto; }
 
-/* PDF widget */
+/* ===== PDF widget ===== */
 .pdf-widget {
   width: 600px;
   height: 800px;
@@ -184,35 +188,24 @@ a:hover {
   display: flex;
   flex-direction: column;
 }
-.pdf-widget canvas {
-  flex: 1;
-  width: 100%;
-}
+.pdf-widget canvas { flex: 1; width: 100%; }
 .pdf-controls {
   text-align: center;
   padding: 0.5rem;
   background: #fafafa;
   border-bottom: 1px solid #ddd;
 }
-.pdf-controls button {
-  margin: 0 0.5rem;
-}
+.pdf-controls button { margin: 0 0.5rem; }
 
-/* Song list */
-.song-list {
-  padding-left: 1.2rem;
-}
-.song-list li {
-  margin-bottom: 0.5rem;
-}
+/* ===== Song list ===== */
+.song-list { padding-left: 1.2rem; }
+.song-list li { margin-bottom: 0.5rem; }
 .song-list li a {
   color: #2b2f78;
   font-weight: bold;
   text-decoration: none;
 }
-.song-list li a:hover {
-  text-decoration: underline;
-}
+.song-list li a:hover { text-decoration: underline; }
 
 /* Result count */
 .result-count {
@@ -221,7 +214,7 @@ a:hover {
   opacity: 0.9;
 }
 
-/* Auth layout */
+/* ===== Auth Layout ===== */
 .auth-wrapper {
   min-height: 100vh;
   display: flex;
@@ -237,7 +230,7 @@ a:hover {
   background: white;
   border-radius: 12px;
   box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-  overflow: visible;            /* allow dropdowns to escape */
+  overflow: visible; /* FIRST preserves dropdown escape */
 }
 .auth-aside {
   flex: 1;
@@ -263,15 +256,27 @@ a:hover {
 }
 .auth-form { width:100%; }
 .auth-title { font-size:1.75rem; font-weight:600; color:#1f2937; margin-bottom:2.5rem; }
-.auth-error { background:#fee2e2; color:#dc2626; padding:.75rem; border-radius:6px; margin-bottom:1rem; display:none; }
+.auth-error {
+  background:#fee2e2;
+  color:#dc2626;
+  padding:.75rem;
+  border-radius:6px;
+  margin-bottom:1rem;
+  display:none;
+}
 .auth-error:not(:empty) { display:block; }
 .login-form { display:flex; flex-direction:column; gap:2rem; }
 .form-group { display:flex; flex-direction:column; gap:.75rem; }
 .input-label { font-weight:600; color:#1f2937; font-size:1rem; }
 .input-group { position:relative; }
 .input-group input {
-  width:100%; padding:1rem; border:2px solid #e5e7eb; border-radius:8px;
-  font-size:1rem; transition:border-color .2s; background:#f9fafb;
+  width:100%;
+  padding:1rem;
+  border:2px solid #e5e7eb;
+  border-radius:8px;
+  font-size:1rem;
+  transition:border-color .2s;
+  background:#f9fafb;
 }
 .input-group input:focus { outline:none; border-color:#3b4f87; background:#fff; }
 .toggle-pass {
@@ -279,14 +284,8 @@ a:hover {
   background:none; border:none; color:#3b4f87; cursor:pointer; font-size:.875rem; font-weight:500;
 }
 .toggle-pass:hover { color:#1f2937; }
-.btn-primary {
-  background:#3b4f87; color:#fff; border:none; padding:1rem 1.5rem; border-radius:8px;
-  font-size:1rem; font-weight:600; cursor:pointer; transition:background-color .2s; margin-top:1rem;
-}
-.btn-primary:hover { background:#2d3a66; }
-.btn-primary:active { transform:none; }
 
-/* Responsive */
+/* ===== Responsive ===== */
 @media (max-width: 768px) {
   .auth-card { flex-direction:column; margin:1rem; min-height:auto; }
   .auth-aside { min-height:300px; }
