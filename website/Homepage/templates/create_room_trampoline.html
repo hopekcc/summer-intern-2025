@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block title %}Create Room{% endblock %}
+
+{% block content %}
+<section style="max-width:640px;margin:2rem auto;">
+  <h2>Creating your room…</h2>
+  <p id="status" style="margin-top:1rem;color:#666;">Getting authentication…</p>
+  <p style="margin-top:1rem;"><a href="/rooms/new">Back</a></p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAQ3r-8kqsWOgBkWRKs-bApV33oeu-AICs",
+    authDomain: "hopekcc-2024-summer-intern-api.firebaseapp.com",
+    projectId: "hopekcc-2024-summer-intern-api",
+    storageBucket: "hopekcc-2024-summer-intern-api.appspot.com",
+    messagingSenderId: "172531116306",
+    appId: "1:172531116306:web:d898ae28b5f79a425babcb"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const statusEl = document.getElementById('status');
+
+  async function createWithToken(idToken) {
+    statusEl.textContent = "Creating room…";
+    try {
+      const res = await fetch('/rooms/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        }
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        statusEl.textContent = `Create failed (${res.status}): ${t}`;
+        statusEl.style.color = '#d00';
+        return;
+      }
+      const data = await res.json();
+      const code = data.code || data.room_id || data.id;
+      if (!code) {
+        statusEl.textContent = 'No room code returned.';
+        statusEl.style.color = '#d00';
+        return;
+      }
+      statusEl.textContent = `Room created: ${code}. Redirecting…`;
+      window.location.href = `/rooms/${code}`;
+    } catch (e) {
+      statusEl.textContent = 'Network error: ' + e.message;
+      statusEl.style.color = '#d00';
+    }
+  }
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      statusEl.textContent = "Please sign in first (Authorization token required).";
+      statusEl.style.color = '#d00';
+      return;
+    }
+    try {
+      const token = await user.getIdToken(true);
+      await createWithToken(token);
+    } catch (e) {
+      statusEl.textContent = 'Token error: ' + e.message;
+      statusEl.style.color = '#d00';
+    }
+  });
+</script>
+{% endblock %}
