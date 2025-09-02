@@ -1,5 +1,4 @@
 
-
 {% extends "base.html" %}
 {% block title %}Search Songs{% endblock %}
 
@@ -71,15 +70,24 @@
             <ul class="song-list" style="list-style:none;padding-left:0;">
               ${songs.map(song => {
                 const id = pickId(song);
-                const title = escapeHtml(String(song.title ?? song.name ?? song.song_title ?? "Untitled"));
-                const artist = escapeHtml(pickArtist(song));
+
+                // raw values for URL
+                const titleRaw  = String(song.title ?? song.name ?? song.song_title ?? "Untitled");
+                const artistRaw = (song.artist ?? song.singer ?? song.author ??
+                     (Array.isArray(song.artists) ? song.artists.join(", ") : "") ?? "Unknown");
+
+                // escaped values for visibility
+                const title  = escapeHtml(titleRaw);
+                const artist = escapeHtml(artistRaw);
+
                 return `
-                  <li style="margin: 0.25rem 0;">
-                    <a href="/songs/${id}/view" style="text-decoration:none;">
-                      ${title} <span aria-hidden="true">–</span> <span class="artist" style="opacity:0.8;">${artist}</span>
-                    </a>
-                  </li>`;
-              }).join("")}
+                    <li style="margin: 0.25rem 0;">
+                        <a href="{{ url_for('preview') }}?song_id=${encodeURIComponent(id)}&title=${encodeURIComponent(titleRaw)}&artist=${encodeURIComponent(artistRaw)}" style="text-decoration:none;">
+                            ${title} <span aria-hidden="true">–</span> <span class="artist" style="opacity:0.8;">${artist}</span>
+                        </a>
+                        </li>`;
+                }).join("")}
+
             </ul>
           `;
         } catch (e) {

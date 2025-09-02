@@ -23,14 +23,14 @@
       <button type="submit" class="btn-primary" style="margin-left:0.5rem;">Show PDF</button>
     </form>
 
-    <details style="margin:1rem 0;">
+    <!--<details style="margin:1rem 0;">
       <summary>Paste ChordPro (optional)</summary>
       <form method="post" style="margin-top:0.75rem;">
         <textarea name="chordpro_text" rows="10" cols="60" placeholder="Paste your ChordPro content here..."></textarea>
         <br><br>
         <button type="submit" class="btn-primary">Render Preview</button>
       </form>
-    </details>
+    </details>-->
   </div>
 </div>
 
@@ -39,7 +39,10 @@
   <div class="welcome-text">
     <h2>Preview Output</h2>
 
-    <p style="margin:0 0 0.5rem 0;">Now showing: <code id="now-song">—</code></p>
+      <p style="margin:0 0 0.5rem 0;">
+        Now showing:
+        <span id="now-song" style="font-weight:600;">—</span>
+      </p>
 
     <iframe
       id="pdf-frame"
@@ -79,33 +82,100 @@
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
 
-  const form    = document.getElementById('songid-form');
-  const input   = document.getElementById('song_id');
-  const iframe  = document.getElementById('pdf-frame');
-  const nowSong = document.getElementById('now-song');
+  const form   = document.getElementById('songid-form');
+  const input  = document.getElementById('song_id');
+  const iframe = document.getElementById('pdf-frame');
 
-    async function waitForAuth() {
+  const escapeHtml = (s) =>
+    String(s).replaceAll("&","&amp;")
+             .replaceAll("<","&lt;")
+             .replaceAll(">","&gt;")
+             .replaceAll('"',"&quot;")
+             .replaceAll("'","&#39;");
+
+  function setNowLabel(id, title, artist) {
+    const nowSong = document.getElementById('now-song');
+    if (!nowSong) return;
+    if (title || artist) {
+      const t = escapeHtml(title || "Untitled");
+      const a = escapeHtml(artist || "Unknown");
+      nowSong.innerHTML = `${t} <span aria-hidden="true">–</span> <span style="opacity:.85">${a}</span>`;
+    } else {
+      nowSong.textContent = id || "—";
+    }
+  }
+
+  async function waitForAuth() {
     await new Promise(resolve => {
       const unsub = onAuthStateChanged(auth, () => { unsub(); resolve(); });
     });
     return auth.currentUser;
   }
 
-  async function loadPdfWithToken(songId) {
-    const user = await waitForAuth();
-    if (!user) {
-      alert("Please sign in first.");
-      return;
+  // --- fetch helpers --------------------------------------------------------
+  async function getJson(url, token) {
+    const res = await fetch(url, {
+      headers: token ? { Authorization: "Bearer " + token } : {}
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  }
+
+  async function fetchSongMeta(songId, token) {
+    // Try common meta endpoints (adjust if you know the exact one)
+    const id = encodeURIComponent(songId);
+    const endpoints = [
+      `http://34.125.143.141:8000/songs/${id}`,            // e.g. {id,title,artist,...}
+      `/songs/${id}/meta`,       // e.g. {title,artist}
+      `/songs/meta/${id}`,
+      `/songs/detail/${id}`,
+      `/songs/${id}/info`,
+    ];
+    for (const ep of endpoints) {
+      try {
+        const data = await getJson(ep, token);
+        const obj = Array.isArray(data) ? data[0] : (data.data || data);
+        if (!obj) continue;
+        const title  = obj.title ?? obj.name ?? obj.song_title;
+        const artist = obj.artist ?? obj.singer ?? obj.author ??
+                       (Array.isArray(obj.artists) ? obj.artists.join(", ") : undefined);
+        if (title || artist) return { title, artist };
+      } catch (e) {
+        // try next
+      }
     }
+    return {}; // fallback: nothing found
+  }
+
+  async function loadPdfWithToken(songId, meta = {}) {
+    const user = await waitForAuth();
+    if (!user) { alert("Please sign in first."); return; }
+
     const idToken = await user.getIdToken(true);
 
-    // update iframe + label
-    if (nowSong) nowSong.textContent = songId || "—";
-    if (iframe)  iframe.src = `/songs/${encodeURIComponent(songId)}/pdf?token=${encodeURIComponent(idToken)}`;
+    // If no title/artist provided (manual ID case), fetch metadata
+    if (!meta.title && !meta.artist) {
+      try {
+        const fetched = await fetchSongMeta(songId, idToken);
+        if (fetched) meta = { ...meta, ...fetched };
+      } catch (e) {
+        // ignore, fall back to showing ID
+      }
+    }
 
-    // keep URL in sync
+    // Update label (Title – Artist if available)
+    setNowLabel(songId, meta.title, meta.artist);
+
+    // Set iframe to the PDF
+    if (iframe) {
+      iframe.src = `/songs/${encodeURIComponent(songId)}/pdf?token=${encodeURIComponent(idToken)}`;
+    }
+
+    // Keep URL in sync so refresh/share preserves meta when available
     const params = new URLSearchParams(window.location.search);
     params.set('song_id', songId);
+    if (meta.title)  params.set('title',  meta.title);
+    if (meta.artist) params.set('artist', meta.artist);
     history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
   }
 
@@ -115,16 +185,24 @@
       e.preventDefault();
       const id = input.value.trim();
       if (!id) return;
-      await loadPdfWithToken(id);
+      await loadPdfWithToken(id); // will fetch meta automatically
     });
   }
 
   // If page opened with ?song_id=..., auto-load it
-  const initial = new URLSearchParams(window.location.search).get('song_id');
+  const params   = new URLSearchParams(window.location.search);
+  const initial  = params.get('song_id');
+  const initialT = params.get('title');
+  const initialA = params.get('artist');
+
   if (initial) {
     onAuthStateChanged(auth, (user) => {
-      if (user) loadPdfWithToken(initial);
-      else if (nowSong) nowSong.textContent = initial;  // show requested id even before token
+      if (user) {
+        loadPdfWithToken(initial, { title: initialT, artist: initialA });
+      } else {
+        // show something while waiting for login
+        setNowLabel(initial, initialT, initialA);
+      }
     });
   }
 </script>
