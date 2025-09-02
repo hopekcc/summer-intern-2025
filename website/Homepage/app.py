@@ -305,56 +305,81 @@ def search_title():
 # -----------------------------------------------------------------------------
 # Room Routes WITH WEBSOCKET BROADCASTING
 # -----------------------------------------------------------------------------
+# Updated Flask routes to work with WebSocket server
+
 @app.route("/rooms/", methods=["POST"])
 def create_room_api():
-    """Create room with proper host tracking - matches your frontend call"""
-    code = make_room_code()
-    
-    # Get user info from Firebase token if provided
-    host_id = None
-    auth_header = request.headers.get('Authorization')
-    if auth_header and auth_header.startswith('Bearer '):
-        token = auth_header.split(' ')[1]
-        try:
-            decoded_token = verify_id_token(token)
-            if decoded_token:
-                host_id = decoded_token['uid']
-        except Exception as e:
-            print(f"Token verification failed: {e}")
-            # Continue without host_id for demo mode
-    
-    # Store room data
-    rooms_data[code] = {
-        "code": code,
-        "host_id": host_id,
-        "song_id": None,
-        "page": 1,
-        "created_at": datetime.datetime.utcnow().isoformat()
-    }
-    
-    print(f"Created room {code} with host_id: {host_id}")  # Debug log
-    return jsonify({"code": code})
+    """Proxy room creation to WebSocket server for real-time sync"""
+    try:
+        auth_header = request.headers.get('Authorization')
+        headers = {'Content-Type': 'application/json'}
+        
+        if auth_header:
+            headers['Authorization'] = auth_header
+        
+        print(f"Proxying room creation to WebSocket server")
+        
+        # Forward to WebSocket server that has the rooms endpoints
+        response = requests.post(
+            'http://34.125.143.141:8000/rooms/', 
+            headers=headers,
+            json={},  # Empty payload, let WebSocket server generate room
+            timeout=10
+        )
+        
+        print(f"WebSocket server response: {response.status_code}")
+        
+        if response.status_code in [200, 201]:
+            data = response.json()
+            # Handle different response formats
+            room_code = data.get('code') or data.get('room_id') or data.get('id')
+            
+            if room_code:
+                return jsonify({"code": room_code})
+            else:
+                return jsonify({"error": "Room created but no ID returned"}), 500
+        else:
+            print(f"WebSocket server error: {response.status_code} - {response.text}")
+            return jsonify({"error": "Failed to create room on server"}), response.status_code
+            
+    except requests.RequestException as e:
+        print(f"Connection to WebSocket server failed: {e}")
+        return jsonify({"error": "Room server unavailable"}), 502
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return jsonify({"error": "Internal server error"}), 500
 
 @app.route("/rooms/create")
 def create_room():
-    """Generate a room and redirect, but try to get host from session cookie."""
-    code = make_room_code()
-    
-    # Try to get the current user from session cookie
-    user = current_user()  # This function already exists in your app
-    host_id = user.get('uid') if user else None
-    
-    # Store room data with host info
-    rooms_data[code] = {
-        "code": code,
-        "host_id": host_id,
-        "song_id": None,
-        "page": 1,
-        "created_at": datetime.datetime.utcnow().isoformat()
-    }
-    
-    print(f"Created room {code} via redirect with host_id: {host_id}")
-    return redirect(url_for("room_page_and_details", room_id=code))
+    """Create room via WebSocket server and redirect"""
+    try:
+        # Create room on WebSocket server
+        response = requests.post('http://34.125.143.141:8000/rooms/', 
+                               json={}, 
+                               timeout=10)
+        
+        if response.status_code in [200, 201]:
+            data = response.json()
+            room_code = data.get('code') or data.get('room_id') or data.get('id')
+            
+            if room_code:
+                return redirect(url_for("room_page", room_id=room_code))
+            else:
+                return "Room created but no ID returned", 500
+        else:
+            print(f"Failed to create room: {response.status_code}")
+            return f"Failed to create room: {response.status_code}", 500
+            
+    except requests.RequestException as e:
+        print(f"Connection error: {e}")
+        return "Room server unavailable", 502
+
+@app.route("/rooms/<room_id>", methods=["GET"])
+def room_page(room_id):
+    """Render room page - let WebSocket handle all room logic"""
+    return render_template("room.html", room_id=room_id)
+
+# Remove the old room_page_and_details function since we're not using Flask for room data anymore
 
 @app.route("/rooms/join", methods=["GET", "POST"])
 def join_room():
@@ -365,6 +390,7 @@ def join_room():
         return redirect(url_for("room_page_and_details", room_id=code))
     return render_template("join_room.html")
 
+'''
 @app.route("/rooms/<room_id>", methods=["GET"])
 def room_page_and_details(room_id):
     """Combined: room page rendering AND room details API"""
@@ -387,6 +413,7 @@ def room_page_and_details(room_id):
         print(f"Auto-created room {room_id} (no host)")
     
     return render_template("room.html", room_id=room_id)
+    
 
 def get_room_details_internal(room_id):
     """Internal function to get room details as JSON"""
@@ -416,6 +443,7 @@ def get_room_details_internal(room_id):
         "song_id": room_data["song_id"], 
         "page": room_data["page"]
     })
+    '''
 
 # NEW: Select Song For Room endpoint WITH BROADCASTING
 @app.route("/rooms/<room_id>/song", methods=["POST"])
