@@ -28,3 +28,14 @@
     {% block scripts %}{% endblock %}
 </body>
 </html>
+{% block extra_styles %}{% endblock %}
+<style>
+  /* Lock navbar brand size across all pages */
+  #brand {
+    font-size: 36px !important;
+    line-height: 1.05;
+    font-weight: 800;
+    color: #2b2f78;
+    white-space: nowrap;
+  }
+</style>

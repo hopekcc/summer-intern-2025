@@ -1,6 +1,9 @@
 package com.example.chordproapp.navigation
 
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -54,22 +57,42 @@ fun AppNavigation(
         composable("newPlaylist") {
             NewPlaylist(navController, playlistViewModel)
         }
-        composable("playlist/{name}") { backStackEntry ->
-            val name = backStackEntry.arguments?.getString("name") ?: "Playlist Name"
-            Playlist(title = name, songCount = 6, playlistViewModel)
+        composable(
+            route = "playlist/{playlistId}",
+            arguments = listOf(navArgument("playlistId") { type = NavType.StringType }) // Changed from IntType to StringType for UUID support
+        ) { backStackEntry ->
+            val playlistId = backStackEntry.arguments?.getString("playlistId") ?: "" // Changed from getInt to getString
+            val playlists by playlistViewModel.playlists.collectAsState(initial = emptyList())
+            val playlist = playlists.find { it.id == playlistId }
+
+            if (playlist != null) {
+                Playlist(
+                    playlistId = playlist.id,
+                    playlistViewModel = playlistViewModel,
+                    navController = navController
+                )
+            } else {
+                Text("Loading playlist...")
+            }
+
         }
 
-        // Add this to your existing Navigation.kt file in the NavHost composable
         composable(
-            route = "viewer/{songId}",
-            arguments = listOf(navArgument("songId") { type = NavType.IntType })
+            route = "viewer/{songId}/{pageCount}",
+            arguments = listOf(
+                navArgument("songId") { type = NavType.IntType },
+                navArgument("pageCount") { type = NavType.IntType }
+            )
         ) { backStackEntry ->
             val songId = backStackEntry.arguments?.getInt("songId") ?: 0
+            val pageCount = backStackEntry.arguments?.getInt("pageCount") ?: 1
             Viewer(
                 songId = songId,
+                totalPages = pageCount,
                 onClose = { navController.popBackStack() },
                 idTokenProvider = idTokenProvider
             )
         }
+
     }
 }
