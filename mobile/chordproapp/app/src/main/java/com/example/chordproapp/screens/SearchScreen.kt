@@ -29,7 +29,19 @@ import kotlinx.coroutines.launch
 fun SearchScreen(
     navController: NavHostController,
     idTokenProvider: () -> String?,
-    searchViewModel: SearchViewModel = viewModel { SearchViewModel(idTokenProvider) }
+    searchViewModel: SearchViewModel = run {
+        val context = LocalContext.current
+        viewModel(
+            factory = object : ViewModelProvider.Factory {
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    @Suppress("UNCHECKED_CAST")
+                    return SearchViewModel(
+                        SongRepository(idTokenProvider, context)
+                    ) as T
+                }
+            }
+        )
+    }
 ) {
     // Repository
     val playlistRepository = remember { PlaylistRepository(idTokenProvider) }
@@ -49,20 +61,6 @@ fun SearchScreen(
     LaunchedEffect(Unit) { playlistViewModel.loadAllPlaylists() }
 
     // Search state
-    viewModel: SearchViewModel = run {
-        val context = LocalContext.current
-        viewModel(
-            factory = object : ViewModelProvider.Factory {
-                override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    @Suppress("UNCHECKED_CAST")
-                    return SearchViewModel(
-                        SongRepository(idTokenProvider, context)
-                    ) as T
-                }
-            }
-        )
-    }
-) {
     var query by remember { mutableStateOf("") }
     val searchResults by searchViewModel.searchResults.collectAsState()
     val isLoading by searchViewModel.isLoading.collectAsState()
@@ -185,7 +183,7 @@ fun SearchScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 12.dp),
+                            .padding(bottom = 10.dp),
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
@@ -198,101 +196,114 @@ fun SearchScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(song.title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-                                Text("Artist", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), modifier = Modifier.padding(top = 4.dp))
+                                Text(
+                                    song.title,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    "Artist",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
                             }
 
-                            Button(
-                                onClick = {
-                                    navController.navigate("viewer/${song.id}/${song.pageCount}")
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.secondary,
-                                    contentColor = MaterialTheme.colorScheme.primary
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
-                            ) {
-                                Text(
-                                    "View Sample Sheet",
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-
-                            Row {
-                                // View button
-                                Button(
-                                    onClick = { navController.navigate("viewer/${song.id}") },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary, contentColor = MaterialTheme.colorScheme.primary),
-                                    shape = RoundedCornerShape(12.dp),
-                                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
-                                ) {
-                                    Text("View", style = MaterialTheme.typography.labelMedium)
-                                }
-
-                                Spacer(modifier = Modifier.width(8.dp))
-
-                                // Add to playlist
-                                Box {
+                                Column {
                                     Button(
-                                        onClick = { expanded = true },
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
+                                        onClick = {
+                                            navController.navigate("viewer/${song.id}/${song.pageCount}")
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.secondary,
+                                            contentColor = MaterialTheme.colorScheme.primary
+                                        ),
                                         shape = RoundedCornerShape(12.dp),
                                         elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                                     ) {
-                                        Text(selectedPlaylist?.name ?: "Add to")
-                                        Icon(Icons.Default.LibraryMusic, contentDescription = null, modifier = Modifier.size(25.dp).padding(start = 8.dp))
+                                        Text(
+                                            "View Sample Sheet",
+                                            style = MaterialTheme.typography.labelMedium
+                                        )
                                     }
 
-                                    DropdownMenu(
-                                        expanded = expanded,
-                                        onDismissRequest = { expanded = false }
-                                    ) {
-                                        playlists.forEach { playlist ->
-                                            DropdownMenuItem(
-                                                text = { Text(playlist.name) },
-                                                onClick = {
-                                                    selectedPlaylist = playlist
-                                                    expanded = false
 
-                                                    // Call ViewModel with callback for Snackbar
-                                                    playlistViewModel.addSongToPlaylist(playlist.id, song.id) { success ->
-                                                        coroutineScope.launch {
-                                                            val message = if (success) {
-                                                                "Added to ${playlist.name}"
-                                                            } else {
-                                                                "Failed to add to ${playlist.name}"
+                                    // Add to playlist
+                                    Box {
+                                        Button(
+                                            onClick = { expanded = true },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.primary,
+                                                contentColor = MaterialTheme.colorScheme.onPrimary
+                                            ),
+                                            shape = RoundedCornerShape(12.dp),
+                                            elevation = ButtonDefaults.buttonElevation(
+                                                defaultElevation = 2.dp
+                                            )
+                                        ) {
+                                            Text(selectedPlaylist?.name ?: "Add to",
+                                                style = MaterialTheme.typography.labelMedium)
+                                            Icon(
+                                                Icons.Default.LibraryMusic,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(25.dp)
+                                                    .padding(start = 8.dp)
+                                            )
+                                        }
+
+                                        DropdownMenu(
+                                            expanded = expanded,
+                                            onDismissRequest = { expanded = false }
+                                        ) {
+                                            playlists.forEach { playlist ->
+                                                DropdownMenuItem(
+                                                    text = { Text(playlist.name) },
+                                                    onClick = {
+                                                        selectedPlaylist = playlist
+                                                        expanded = false
+
+                                                        // Call ViewModel with callback for Snackbar
+                                                        playlistViewModel.addSongToPlaylist(
+                                                            playlist.id,
+                                                            song.id
+                                                        ) { success ->
+                                                            coroutineScope.launch {
+                                                                val message = if (success) {
+                                                                    "Added to ${playlist.name}"
+                                                                } else {
+                                                                    "Failed to add to ${playlist.name}"
+                                                                }
+                                                                snackbarHostState.showSnackbar(
+                                                                    message
+                                                                )
                                                             }
-                                                            snackbarHostState.showSnackbar(message)
                                                         }
                                                     }
-                                                }
-                                            )
+                                                )
+                                            }
                                         }
                                     }
                                 }
-
-
+                            }
                         }
                     }
-                }
-            } else if (!isLoading && query.isNotEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            "No songs found for \"$query\"",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                        )
+                } else if (!isLoading && query.isNotEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "No songs found for \"$query\"",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                            )
+                        }
                     }
                 }
             }
         }
     }
-}
-
 
