@@ -68,9 +68,9 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
   import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
 
-  // === CONFIG ===
-  const BACKEND_HTTP = "http://34.125.143.141:8000";           // REST (per docs)
-  const BACKEND_WS   = "ws://34.125.143.141:8000/ws";           // WS endpoint
+  // === CONFIG (unchanged) ===
+  const BACKEND_HTTP = "http://34.125.143.141:8000";
+  const BACKEND_WS   = "ws://34.125.143.141:8000/ws";
   const roomId = "{{ room_id }}";
 
   const firebaseConfig = {
@@ -82,7 +82,7 @@
     appId: "1:172531116306:web:d898ae28b5f79a425babcb"
   };
 
-  // === DOM ===
+  // === DOM (unchanged) ===
   const vSong = document.getElementById("v-song");
   const vPage = document.getElementById("v-page");
   const songImage = document.getElementById("song-image");
@@ -99,47 +99,42 @@
   const nextBtn = document.getElementById("next");
   const refreshBtn = document.getElementById("refresh-status");
 
+[prevBtn, nextBtn].forEach(b => {
+  if (!b) return;
+  b.style.minWidth = '110px';
+  b.style.textAlign = 'center';
+});
+
+
   // === STATE ===
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
-
   let idToken = null;
   let currentUser = null;
   let isHost = false;
-  let roomState = { host_id: null, current_song: "", current_page: 1 };
+  let roomState = { host_id: null, current_song: "", current_page: 1, total_pages: null };
 
   let socket = null;
-  let reconnectTimer = null;
   let isConnecting = false;
 
   // === HELPERS ===
-  function showAuthStatus(msg, type) {
-    authMessage.textContent = msg;
+  function showAuthStatus(message, type) {
+    authMessage.textContent = message;
     authStatus.style.display = 'block';
-    if (type === 'success') {
-      authStatus.style.background = '#d1fae5';
-      authStatus.style.color = '#065f46';
-      authStatus.style.border = '1px solid #10b981';
-    } else {
-      authStatus.style.background = '#fef2f2';
-      authStatus.style.color = '#991b1b';
-      authStatus.style.border = '1px solid #ef4444';
-    }
+    authStatus.style.background = type === 'success' ? '#d1fae5' : '#fef2f2';
+    authStatus.style.color = type === 'success' ? '#065f46' : '#991b1b';
+    authStatus.style.border = type === 'success' ? '1px solid #10b981' : '1px solid #ef4444';
   }
 
-  async function authedFetch(url, opts = {}) {
+  async function authedFetch(url, options = {}) {
     if (!idToken) throw new Error("Not authenticated");
-    const headers = {
-      ...(opts.headers || {}),
-      Authorization: `Bearer ${idToken}`,
-      "Content-Type": opts.body ? "application/json" : (opts.headers || {})["Content-Type"]
-    };
-    const res = await fetch(url, { ...opts, headers });
-    // simple 401 auto-refresh
+    const headers = { ...(options.headers||{}), Authorization: `Bearer ${idToken}` };
+    if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+    const res = await fetch(url, { ...options, headers });
     if (res.status === 401 && currentUser) {
       idToken = await currentUser.getIdToken(true);
       headers.Authorization = `Bearer ${idToken}`;
-      return fetch(url, { ...opts, headers });
+      return fetch(url, { ...options, headers });
     }
     return res;
   }
@@ -152,94 +147,256 @@
     hostStatus.style.color = isHost ? '#059669' : '#6b7280';
   }
 
-  function applyState(s) {
-    const songId = s.current_song ?? s.song_id ?? "";
-    const page   = s.current_page ?? s.page ?? 1;
-    const hostId = s.host_id ?? roomState.host_id;
+function updateNavButtons() {
+  const page  = toIntOrNull(roomState.current_page) || 1;
+  const total = toIntOrNull(roomState.total_pages);
 
-    roomState = { host_id: hostId, current_song: songId, current_page: page };
+  // Prev: hide on first page, but keep its position
+  setHiddenKeepLayout(prevBtn, page <= 1);
 
-    vSong.textContent = songId || "—";
-    vPage.textContent = page;
-
-    if (isHost) { songInput.value = songId; pageInput.value = page; }
-    updateHostUI();
-    loadImage();
+  // Next: hide when we KNOW we’re at/over the last page
+  const hideNext = Number.isFinite(total) && total > 0 && page >= total;
+  setHiddenKeepLayout(nextBtn, hideNext);
   }
 
-async function loadImage() {
-  const songId = roomState.current_song;
-  const page   = roomState.current_page;
 
-  if (!songId) {
-    songImage.style.display = 'none';
-    imageHint.textContent = 'No song selected.';
-    return;
-  }
+function applyState(s) {
+  const songId = s.current_song ?? s.song_id ?? "";
+  const page   = toIntOrNull(s.current_page ?? s.page) ?? 1;
+  const hostId = s.host_id ?? roomState.host_id;
 
-  const t = Date.now();
-  const url = `${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}/image?t=${t}`;
+  // accept total_pages if present; otherwise keep previous
+  const total  = toIntOrNull(s.total_pages) ?? roomState.total_pages;
 
-  imageHint.textContent = 'Loading image...';
-  songImage.style.display = 'none';
+  roomState = { host_id: hostId, current_song: songId, current_page: page, total_pages: total };
 
-  try {
-    const res = await authedFetch(url);
-    if (res.status === 404) {
-      imageHint.textContent = `No image for song "${songId}" page ${page}.`;
-      return;
-    }
-    if (!res.ok) {
-      imageHint.textContent = `Image error (${res.status}).`;
-      return;
-    }
-    const blob = await res.blob();
-    const objUrl = URL.createObjectURL(blob);
-    if (songImage.src && songImage.src.startsWith('blob:')) URL.revokeObjectURL(songImage.src);
-    songImage.src = objUrl;
-    songImage.style.display = 'block';
-    imageHint.textContent = '';
-  } catch (e) {
-    console.error("Image error:", e);
-    imageHint.textContent = 'Error loading image.';
-  }
+  vSong.textContent = songId || "—";
+  vPage.textContent = page;
+
+  if (isHost) { songInput.value = songId; pageInput.value = page; }
+  updateHostUI();
+  updateNavButtons();
+  loadImage(); // unchanged
 }
 
+
+
+  async function loadImage() {
+    const songId = roomState.current_song;
+    const page   = roomState.current_page;
+
+    if (!songId) {
+      songImage.style.display = 'none';
+      imageHint.textContent = 'No song selected.';
+      updateNavButtons();
+      return false;
+    }
+
+    const url = `${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}/image?t=${Date.now()}`;
+    imageHint.textContent = 'Loading image...';
+    songImage.style.display = 'none';
+
+    try {
+      const res = await authedFetch(url);
+      if (res.status === 404) {
+        // infer end-of-document
+        roomState.total_pages = Math.max(roomState.total_pages || 0, Math.max(1, page - 1));
+        updateNavButtons();
+        imageHint.textContent = `No image for page ${page}.`;
+        return false;
+      }
+      if (!res.ok) {
+        imageHint.textContent = `Image error (${res.status}).`;
+        return false;
+      }
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      if (songImage.src && songImage.src.startsWith('blob:')) URL.revokeObjectURL(songImage.src);
+      songImage.src = objUrl;
+      songImage.style.display = 'block';
+      imageHint.textContent = '';
+      return true;
+    } catch (e) {
+      console.error("Image error:", e);
+      imageHint.textContent = 'Error loading image.';
+      return false;
+    }
+  }
 
   // === REST that mirrors /docs ===
   async function restJoinRoom() {
-    const url = `${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}/join`;
-    await authedFetch(url, { method: "POST" });
+    await authedFetch(`${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}/join`, { method: "POST" });
   }
-
   async function restLeaveRoom() {
-    const url = `${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}/leave`;
-    await authedFetch(url, { method: "POST" });
+    await authedFetch(`${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}/leave`, { method: "POST" }).catch(()=>{});
   }
-
   async function restGetRoom() {
-    const url = `${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}`;
-    const res = await authedFetch(url);
+    const res = await authedFetch(`${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}`);
     if (!res.ok) throw new Error("Failed to get room");
-    return res.json(); // { host_id, current_song, current_page, ... }
+    return res.json();
   }
-
   async function restSetSong(songId) {
-  const url = `${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}/song`;
-  const res = await authedFetch(url, { method: "POST", body: JSON.stringify({ song_id: songId }) });
-  console.log("SetSong:", res.status);
-  if (!res.ok) throw new Error(`set_song failed: ${res.status}`);
-}
-
-async function restSetPage(page) {
-  const url = `${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}/page`;
-  const res = await authedFetch(url, { method: "POST", body: JSON.stringify({ page }) });
-  console.log("SetPage:", res.status);
-  if (!res.ok) throw new Error(`set_page failed: ${res.status}`);
-}
-
+    const res = await authedFetch(`${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}/song`, {
+      method: "POST", body: JSON.stringify({ song_id: songId })
+    });
+    if (!res.ok) throw new Error(`set_song failed: ${res.status}`);
+  }
+  async function restSetPage(page) {
+    const res = await authedFetch(`${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}/page`, {
+      method: "POST", body: JSON.stringify({ page })
+    });
+    if (!res.ok) throw new Error(`set_page failed: ${res.status}`);
+  }
 
   // === WS ===
+  function wsOpen() { return socket && socket.readyState === WebSocket.OPEN; }
+
+  function wsTrySend(payloads) {
+    if (!wsOpen()) return false;
+    try {
+      payloads.forEach(p => socket.send(JSON.stringify(p)));
+      return true;
+    } catch { return false; }
+  }
+
+  async function initWS() {
+    if (!idToken || isConnecting || wsOpen()) return;
+    isConnecting = true;
+
+    const sep = BACKEND_WS.includes("?") ? "&" : "?";
+    const wsUrl = `${BACKEND_WS}${sep}token=${encodeURIComponent(idToken)}`;
+
+    try {
+      socket = new WebSocket(wsUrl);
+
+      socket.onopen = () => {
+        console.log('🟢 WebSocket connected');
+        isConnecting = false;
+        connectionStatus.textContent = "Connected";
+        connectionStatus.style.color = "#059669";
+
+    console.log('📤 Sending join messages for room:', roomId);
+  
+  // Send join messages and log each one
+  const joinMessages = [
+    { event: "join", room_id: roomId },
+    { type:  "join", room_id: roomId },
+    { action:"join_room", room_id: roomId },
+    { op:    "join", room_id: roomId }
+  ];
+  
+  joinMessages.forEach(msg => {
+    console.log('📤 Sending join message:', msg);
+    try {
+      socket.send(JSON.stringify(msg));
+      console.log('✅ Join message sent successfully');
+    } catch (e) {
+      console.error('❌ Failed to send join message:', e);
+    }
+  });
+  
+  // Request state
+  console.log('📤 Sending state request messages for room:', roomId);
+  const stateMessages = [
+    { event: "get_state", room_id: roomId },
+    { type:  "get_state", room_id: roomId }
+  ];
+  
+  stateMessages.forEach(msg => {
+    console.log('📤 Requesting state:', msg);
+    try {
+      socket.send(JSON.stringify(msg));
+      console.log('✅ State request sent successfully');
+    } catch (e) {
+      console.error('❌ Failed to send state request:', e);
+    }
+  });
+};
+
+        socket.onmessage = (ev) => {
+            console.log('🟢 WebSocket message received:', ev.data);
+    let msg; 
+    try { 
+        msg = JSON.parse(ev.data); 
+    } catch (e) { 
+        console.error('❌ Failed to parse message:', ev.data, e);
+        return; 
+    }
+    console.log('📦 Parsed message:', msg);
+    console.log('🏷️ Message type:', msg.event || msg.type || msg.action || msg.op);
+    const t = msg.event || msg.type || msg.action || msg.op;
+
+      // ADD THIS CASE to handle connection_success
+  if (t === "connection_success") {
+    console.log('✅ WebSocket authenticated successfully');
+    return;
+  }
+
+  // ADD THIS FALLBACK to see any unhandled messages
+  console.log('⚠️ UNHANDLED WebSocket message type:', t, 'Full message:', msg);
+
+
+    if (t === "join_room_success") {
+        const st = msg.room_state || {};
+        applyState({
+        host_id: st.host_id,
+        current_song: st.current_song ?? st.song_id,
+        current_page: st.current_page ?? st.page,
+        total_pages: st.total_pages
+        });
+        return;
+    }
+
+    if (t === "room_state" || t === "state_update" || t === "update") {
+        if (msg.data) applyState({
+        host_id: msg.data.host_id,
+        current_song: msg.data.current_song ?? msg.data.song_id,
+        current_page: msg.data.current_page ?? msg.data.page,
+        total_pages: msg.data.total_pages
+        });
+        return;
+    }
+
+    if (t === "song_updated" || t === "song_change" || t === "set_song") {
+        const d = msg.data || {};
+        applyState({
+        host_id: d.host_id ?? roomState.host_id,
+        song_id: d.song_id ?? d.current_song ?? roomState.current_song,
+        current_page: d.current_page ?? d.page ?? roomState.current_page,
+        total_pages: d.total_pages
+        });
+        return;
+    }
+
+    if (t === "page_updated" || t === "page_change" || t === "set_page") {
+        const d = msg.data || {};
+        applyState({
+        host_id: d.host_id ?? roomState.host_id,
+        song_id: d.song_id ?? roomState.current_song,
+        current_page: d.current_page ?? d.page ?? roomState.current_page,
+        total_pages: d.total_pages
+        });
+        return;
+    }
+    };
+
+
+      socket.onclose = () => {
+        isConnecting = false;
+        connectionStatus.textContent = "Disconnected";
+        connectionStatus.style.color = "#dc3545";
+      };
+      socket.onerror = () => {
+        isConnecting = false;
+        connectionStatus.textContent = "Connection Error";
+        connectionStatus.style.color = "#dc3545";
+      };
+    } catch (e) {
+      console.error("WS init fail:", e);
+      isConnecting = false;
+    }
+  }
+
   async function closeWS() {
     return new Promise((resolve) => {
       if (!socket) return resolve();
@@ -250,84 +407,9 @@ async function restSetPage(page) {
     });
   }
 
-  function scheduleReconnect() {
-    if (reconnectTimer) return;
-    reconnectTimer = setInterval(() => {
-      if (!isConnecting && idToken) initWS();
-    }, 5000);
-  }
-
-  function initWS() {
-    if (!idToken || isConnecting) return;
-    isConnecting = true;
-
-    const sep = BACKEND_WS.includes("?") ? "&" : "?";
-    const wsUrl = `${BACKEND_WS}${sep}token=${encodeURIComponent(idToken)}`;
-
-    closeWS().then(() => {
-      try {
-        socket = new WebSocket(wsUrl);
-        socket.onopen = () => {
-          isConnecting = false;
-          connectionStatus.textContent = "Connected";
-          connectionStatus.style.color = "#059669";
-          if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
-          // Ask WS for live state stream (server may also infer room from prior REST join)
-          socket.send(JSON.stringify({ event: "join", room_id: roomId }));
-          socket.send(JSON.stringify({ event: "get_state", room_id: roomId }));
-        };
-
-        socket.onmessage = (ev) => {
-          let msg; try { msg = JSON.parse(ev.data); } catch { return; }
-          const type = msg.event || msg.type;
-
-          if (type === "join_room_success") {
-            const st = msg.room_state || {};
-            applyState({
-              host_id: st.host_id,
-              current_song: st.current_song,
-              current_page: st.current_page ?? 1
-            });
-            return;
-          }
-          if (type === "room_state" || type === "state_update") {
-            if (msg.data) applyState(msg.data);
-            return;
-          }
-          if (type === "song_updated" || type === "song_change") {
-            if (msg.data) applyState({ ...roomState, song_id: msg.data.song_id, page: msg.data.page ?? roomState.current_page });
-            return;
-          }
-          if (type === "page_updated" || type === "page_change") {
-            if (msg.data) applyState({ ...roomState, page: msg.data.page });
-            return;
-          }
-        };
-
-        socket.onclose = (e) => {
-          isConnecting = false;
-          connectionStatus.textContent = "Disconnected";
-          connectionStatus.style.color = "#dc3545";
-          if (e.code !== 1000) scheduleReconnect();
-        };
-        socket.onerror = () => {
-          isConnecting = false;
-          connectionStatus.textContent = "Connection Error";
-          connectionStatus.style.color = "#dc3545";
-          scheduleReconnect();
-        };
-      } catch (e) {
-        console.error("WS init fail:", e);
-        isConnecting = false;
-        scheduleReconnect();
-      }
-    });
-  }
-
   // === AUTH FLOW ===
-  onAuthStateChanged(getAuth(), async (user) => {
+  onAuthStateChanged(auth, async (user) => {
     currentUser = user;
-
     if (!user) {
       showAuthStatus("Please sign in to view and sync the room.", "error");
       connectionStatus.textContent = "Not connected";
@@ -336,7 +418,6 @@ async function restSetPage(page) {
       songImage.style.display = 'none';
       imageHint.textContent = "Please sign in to view the song.";
       await closeWS();
-      if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
       idToken = null;
       return;
     }
@@ -345,14 +426,12 @@ async function restSetPage(page) {
       idToken = await user.getIdToken(true);
       showAuthStatus(`Signed in as ${user.email}`, "success");
 
-      // 1) Ensure server knows we joined (REST)
+      // Join via REST (server-side membership) and prime state
       await restJoinRoom();
-
-      // 2) Prime initial state (REST)
       const st = await restGetRoom();
       applyState(st);
 
-      // 3) Subscribe to live updates (WS)
+      // Subscribe live via WS
       initWS();
     } catch (e) {
       console.error(e);
@@ -360,68 +439,99 @@ async function restSetPage(page) {
     }
   });
 
-  // === HOST CONTROLS (REST writes; WS will broadcast back) ===
+  // === MUTATIONS: prefer WS broadcast, also persist via REST ===
+  async function wsNotifySong(songId) {
+    wsTrySend([
+      { event: "set_song", room_id: roomId, song_id: songId },
+      { type:  "set_song", room_id: roomId, song_id: songId },
+      { action:"song",     room_id: roomId, data: { song_id: songId } }
+    ]);
+  }
+  async function wsNotifyPage(page) {
+    wsTrySend([
+      { event: "set_page", room_id: roomId, page },
+      { type:  "set_page", room_id: roomId, page },
+      { action:"page",     room_id: roomId, data: { page } }
+    ]);
+  }
+  async function wsRequestState() {
+    wsTrySend([{ event:"get_state", room_id: roomId }, { type:"get_state", room_id: roomId }]);
+  }
+
 shareBtn.addEventListener("click", async () => {
   if (!isHost) return alert("Only the host can update the room.");
   const song = songInput.value.trim();
-  const page = Math.max(1, parseInt(pageInput.value || "1", 10));
+  let page = Math.max(1, parseInt(pageInput.value || "1", 10));
+
+  // If total_pages is known and page is beyond it, clamp
+  const total = roomState.total_pages;
+  if (Number.isFinite(total) && total > 0) page = Math.min(page, total);
 
   try {
     shareBtn.disabled = true; shareBtn.textContent = "Updating…";
-
-    // Fire mutations (don’t over-optimize; let server decide if it’s a no-op)
-    const ops = [];
-    if (song) ops.push(restSetSong(song));
-    ops.push(restSetPage(page));
-    await Promise.all(ops);
-
-    // Explicitly refresh state in case WS didn't broadcast
-    const st = await restGetRoom();
+    if (song && song !== (roomState.current_song || "")) {
+      wsNotifySong?.(song);
+      await restSetSong(song);
+      // After a song change the server should return the new total_pages in the next GET/WS
+    }
+    if (page !== (roomState.current_page || 1)) {
+      wsNotifyPage?.(page);
+      await restSetPage(page);
+    }
+    const st = await restGetRoom();   // should include total_pages
     applyState(st);
-
   } catch (e) {
-    console.error("Update error:", e);
-    alert("Failed to update room: " + (e?.message || e));
+    alert("Failed to update room: " + e.message);
   } finally {
     shareBtn.disabled = false; shareBtn.textContent = "Share / Update";
   }
 });
 
 
-prevBtn.addEventListener("click", async () => {
+prevBtn?.addEventListener("click", async () => {
+  if (prevBtn.disabled || prevBtn.style.visibility === 'hidden') return;
   if (!isHost) return alert("Only the host can change pages.");
-  const newPage = Math.max(1, (roomState.current_page || 1) - 1);
+  if ((roomState.current_page || 1) <= 1) return;         // boundary guard
+
+  const newPage = (roomState.current_page || 1) - 1;
   try {
     prevBtn.disabled = true;
+    wsNotifyPage?.(newPage);                               // ok if you kept the WS helper
     await restSetPage(newPage);
-    const st = await restGetRoom();   // force-refresh
+    const st = await restGetRoom();
     applyState(st);
-  } finally {
-    prevBtn.disabled = false;
-  }
+  } finally { prevBtn.disabled = false; }
 });
 
-nextBtn.addEventListener("click", async () => {
+nextBtn?.addEventListener("click", async () => {
+  if (nextBtn.disabled || nextBtn.style.visibility === 'hidden') return;
   if (!isHost) return alert("Only the host can change pages.");
-  const newPage = (roomState.current_page || 1) + 1;
+
+  const total = roomState.total_pages;
+  const target = (roomState.current_page || 1) + 1;
+
+  // If total_pages is known, block going past the end
+  if (Number.isFinite(total) && total > 0 && target > total) return;
+
   try {
     nextBtn.disabled = true;
-    await restSetPage(newPage);
-    const st = await restGetRoom();   // force-refresh
+    wsNotifyPage?.(target);
+    await restSetPage(target);
+    const st = await restGetRoom();   // authoritative state (includes total_pages if server sends it)
     applyState(st);
-  } finally {
-    nextBtn.disabled = false;
-  }
+  } finally { nextBtn.disabled = false; }
 });
+
 
   // === DEBUG ===
   refreshBtn.addEventListener("click", async () => {
-    console.log("DEBUG:", { roomId, user: currentUser?.uid, hasToken: !!idToken, ws: socket?.readyState, roomState, isHost });
-    try {
-      const st = await restGetRoom();
-      applyState(st);
-    } catch { /* ignore */ }
-    if (!socket || socket.readyState !== WebSocket.OPEN) initWS();
+    console.log("DEBUG:", {
+      roomId, user: currentUser?.uid, hasToken: !!idToken,
+      roomState, isHost, ws: socket?.readyState
+    });
+    try { const st = await restGetRoom(); applyState(st); } catch {}
+    wsRequestState();
+    if (!wsOpen()) initWS();
   });
 
   // === CLEANUP ===
@@ -430,5 +540,28 @@ nextBtn.addEventListener("click", async () => {
     await closeWS();
     if (songImage.src && songImage.src.startsWith('blob:')) URL.revokeObjectURL(songImage.src);
   });
+
+function setHiddenKeepLayout(el, hidden) {
+  if (!el) return;
+  if (hidden) {
+    el.style.visibility = 'hidden';      // keeps space
+    el.style.pointerEvents = 'none';
+    el.disabled = true;
+    el.setAttribute('aria-hidden', 'true');
+    el.tabIndex = -1;
+  } else {
+    el.style.visibility = 'visible';
+    el.style.pointerEvents = '';
+    el.disabled = false;
+    el.removeAttribute('aria-hidden');
+    el.tabIndex = 0; // or remove
+  }
+}
+
+const toIntOrNull = v => {
+  const n = Number.parseInt(v, 10);
+  return Number.isFinite(n) ? n : null;
+};
+
 </script>
 {% endblock %}
