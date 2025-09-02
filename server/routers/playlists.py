@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select, delete
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
 from scripts.runtime.database import Playlist, PlaylistSong, Song, get_db_session
@@ -11,36 +11,14 @@ router = APIRouter()
 
 # Request Models
 class CreatePlaylistRequest(BaseModel):
-    name: str = Field(..., description="The name of the playlist", example="My Favorite Songs")
-    description: Optional[str] = Field(None, description="Optional description for the playlist", example="A collection of my favorite worship songs")
+    name: str
+    description: Optional[str] = None
 
 class AddSongRequest(BaseModel):
-    song_id: str = Field(..., description="The ID of the song to add to the playlist", example="400")
+    song_id: str
 
 class AddMultipleSongsRequest(BaseModel):
-    song_ids: List[str] = Field(..., description="List of song IDs to add to the playlist", example=["400", "401", "402"])
-
-# Response Models - Document actual output structure  
-class PlaylistResponse(BaseModel):
-    success: bool = Field(..., description="Operation success status", example=True)
-    data: dict = Field(..., description="Playlist data")
-    message: str = Field(..., description="Success message", example="Playlist created successfully")
-
-class PlaylistsListResponse(BaseModel):
-    success: bool = Field(..., description="Operation success status", example=True)
-    data: List[dict] = Field(..., description="List of playlists with songs")
-    message: str = Field(..., description="Success message", example="Retrieved 2 playlists")
-    meta: dict = Field(..., description="Metadata about the response")
-
-class AddSongResponse(BaseModel):
-    success: bool = Field(..., description="Operation success status", example=True)
-    data: dict = Field(..., description="Song addition data")
-    message: str = Field(..., description="Success message", example="Song 'Amazing Grace' added to playlist 'My Favorites'")
-
-class DeleteResponse(BaseModel):
-    success: bool = Field(..., description="Operation success status", example=True)
-    data: dict = Field(..., description="Deletion data")
-    message: str = Field(..., description="Success message", example="Playlist deleted successfully")
+    song_ids: List[str]
 
 # Helper function to validate playlist ownership
 async def get_user_playlist(playlist_id: str, user_id: str, session: AsyncSession) -> Optional[Playlist]:
@@ -49,13 +27,7 @@ async def get_user_playlist(playlist_id: str, user_id: str, session: AsyncSessio
     result = await session.execute(query)
     return result.scalar_one_or_none()
 
-@router.post("/", 
-    response_model=PlaylistResponse,
-    responses={
-        401: {"description": "Authentication required"},
-        400: {"description": "Invalid playlist data"}
-    }
-)
+@router.post("/")
 async def create_playlist(
     request: CreatePlaylistRequest,
     current_user: dict = Depends(get_current_user),
@@ -83,14 +55,7 @@ async def create_playlist(
         "message": "Playlist created successfully"
     }
 
-@router.post("/{playlist_id}/songs", 
-    response_model=AddSongResponse,
-    responses={
-        404: {"description": "Playlist or song not found"},
-        401: {"description": "Authentication required"},
-        409: {"description": "Song already in playlist"}
-    }
-)
+@router.post("/{playlist_id}/songs")
 async def add_song_to_playlist(
     playlist_id: str,
     request: AddSongRequest,
@@ -135,14 +100,7 @@ async def add_song_to_playlist(
         "message": f"Song '{song.title}' added to playlist '{playlist.name}'"
     }
 
-@router.post("/{playlist_id}/songs/bulk", 
-    response_model=AddSongResponse,
-    responses={
-        404: {"description": "Playlist not found or access denied"},
-        401: {"description": "Authentication required"},
-        400: {"description": "Invalid song IDs"}
-    }
-)
+@router.post("/{playlist_id}/songs/bulk")
 async def add_multiple_songs_to_playlist(
     playlist_id: str,
     request: AddMultipleSongsRequest,
@@ -195,12 +153,7 @@ async def add_multiple_songs_to_playlist(
         "message": f"Added {len(added_songs)} songs to playlist '{playlist.name}'"
     }
 
-@router.get("/", 
-    response_model=PlaylistsListResponse,
-    responses={
-        401: {"description": "Authentication required"}
-    }
-)
+@router.get("/")
 async def get_playlists(
     current_user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session)
@@ -238,13 +191,7 @@ async def get_playlists(
         "meta": {"user_id": user_id, "count": len(playlists_with_songs)}
     }
 
-@router.get("/{playlist_id}", 
-    response_model=PlaylistResponse,
-    responses={
-        404: {"description": "Playlist not found or access denied"},
-        401: {"description": "Authentication required"}
-    }
-)
+@router.get("/{playlist_id}")
 async def get_playlist(
     playlist_id: str,
     current_user: dict = Depends(get_current_user),
@@ -278,13 +225,7 @@ async def get_playlist(
         "message": f"Retrieved playlist '{playlist.name}'"
     }
 
-@router.delete("/{playlist_id}", 
-    response_model=DeleteResponse,
-    responses={
-        404: {"description": "Playlist not found or access denied"},
-        401: {"description": "Authentication required"}
-    }
-)
+@router.delete("/{playlist_id}")
 async def delete_playlist(
     playlist_id: str,
     current_user: dict = Depends(get_current_user),
@@ -313,13 +254,7 @@ async def delete_playlist(
         "message": f"Playlist '{playlist.name}' deleted successfully"
     }
 
-@router.delete("/{playlist_id}/songs/{song_id}", 
-    response_model=DeleteResponse,
-    responses={
-        404: {"description": "Playlist or song not found"},
-        401: {"description": "Authentication required"}
-    }
-)
+@router.delete("/{playlist_id}/songs/{song_id}")
 async def delete_song_from_playlist(
     playlist_id: str,
     song_id: str,

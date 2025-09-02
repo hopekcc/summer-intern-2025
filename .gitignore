@@ -1,4 +1,3 @@
 /.vscode/
 .DS_store.DS_Store
 .github/secrets.env
-/unlimited

@@ -3,7 +3,6 @@ import gzip
 import json
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
-from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -26,13 +25,6 @@ logger = _app_logger.getChild("api.songs")
 
 router = APIRouter()
 
-# Response Models - Document actual output structure
-class SongResponse(BaseModel):
-    id: str = Field(..., description="Unique song identifier", example="400")
-    title: str = Field(..., description="Song title", example="Amazing Grace")
-    artist: str = Field(..., description="Song artist", example="John Newton")
-    filename: Optional[str] = Field(None, description="Original filename", example="amazing_grace.pro")
-
 # ============================================================================
 # SONG MANAGEMENT HELPERS
 # ============================================================================
@@ -49,8 +41,6 @@ async def songPDFHelper(
     songs_pdf_dir: str = Depends(get_songs_pdf_dir)
 ):
     song = await get_song_by_id_from_db(db, song_id)
-    if not song:
-        raise HTTPException(status_code=404, detail=f"Song with ID '{song_id}' not found.")
     # Prefer new layout: songs_pdf/{id}.pdf
     pdf_filename = f"{song.id}.pdf"
     pdf_path = os.path.join(songs_pdf_dir, pdf_filename)
@@ -69,17 +59,11 @@ async def songPDFHelper(
 # ENDPOINTS
 # ============================================================================
 
-@router.get("/", 
-    response_model=List[SongResponse],
-    responses={
-        401: {"description": "Authentication required"},
-        500: {"description": "Failed to read songs list"}
-    }
-)
+@router.get("/", response_model=None)
 async def get_songs_list(
-    search: str = Query(None, description="Search term for filtering songs by title or artist"),
-    limit: int = Query(50, description="Maximum number of songs to return", ge=1, le=100),
-    offset: int = Query(0, description="Number of songs to skip for pagination", ge=0),
+    search: str = None,
+    limit: int = 50,
+    offset: int = 0,
     current_user=Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session)
 ):
@@ -99,14 +83,7 @@ async def get_songs_list(
         logger.error(f"Failed to retrieve songs: {str(e)}", exc_info=True)
         return []
 
-@router.get("/list", 
-    response_model=None,
-    responses={
-        404: {"description": "Songs list not available"},
-        401: {"description": "Authentication required"},
-        500: {"description": "Failed to read songs list"}
-    }
-)
+@router.get("/list", response_model=None)
 def get_songs_list_json(
     current_user=Depends(get_current_user),
     gz_path: str = Depends(get_songs_list_gzip_path)
@@ -137,13 +114,7 @@ def get_songs_list_json(
         logger.error(f"Failed to decode songs list gzip: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to read songs list")
 
-@router.get("/{song_id}", 
-    response_model=SongResponse,
-    responses={
-        404: {"description": "Song not found"},
-        401: {"description": "Authentication required"}
-    }
-)
+@router.get("/{song_id}", response_model=None)
 async def get_specific_song(
     current_user=Depends(get_current_user),
     song: Song = Depends(get_song_dependency),
@@ -175,14 +146,8 @@ async def get_specific_song(
     
     return song_dict
 
-@router.get("/{song_id}/pdf",
-    responses={
-        404: {"description": "Song or PDF not found"},
-        401: {"description": "Authentication required"},
-        200: {"description": "PDF file", "content": {"application/pdf": {}}}
-    }
-)
-async def download_song_pdf(
+@router.get("/{song_id}/pdf")
+def get_song_pdf(
     song_id: str, 
     current_user=Depends(get_current_user),
     pdf_path: str = Depends(songPDFHelper)
@@ -199,24 +164,14 @@ async def download_song_pdf(
         headers=headers,
     )
     
-@router.get("/{song_id}/image/{page}",
-    responses={
-        404: {"description": "Song or image not found"},
-        401: {"description": "Authentication required"},
-        400: {"description": "Invalid page number"},
-        304: {"description": "Image not modified (ETag match)"},
-        200: {"description": "Image data", "content": {"image/webp": {}}}
-    }
-)
-async def get_song_image(
+@router.get("/{song_id}/image")
+def get_song_image(
     song_id: str,
-    page: int,
     current_user=Depends(get_current_user),
     song: Song = Depends(get_song_dependency),
     songs_img_dir: str = Depends(get_songs_img_dir)
 ):
     """Return the song image from the songs_img directory"""
-    # Deterministic layout: songs_img/{song_id}/page_{n}.webp
     # Deterministic layout: songs_img/{song_id}/page_1.webp (cover thumbnail)
     # DB-backed guard: ensure the song has at least one page
     if getattr(song, "page_count", 0) < 1:
@@ -234,14 +189,7 @@ async def get_song_image(
     }
     return FileResponse(path=path, media_type="image/webp", headers=headers)
 
-@router.get("/{song_id}/page/{page_number}",
-    responses={
-        404: {"description": "Song, page, or image not found"},
-        401: {"description": "Authentication required"},
-        400: {"description": "Invalid page number"},
-        200: {"description": "Image data", "content": {"image/webp": {}}}
-    }
-)
+@router.get("/{song_id}/page/{page_number}")
 def get_song_page_image(
     song_id: str,
     page_number: int,
@@ -266,13 +214,7 @@ def get_song_page_image(
     }
     return FileResponse(path=path, media_type="image/webp", headers=headers)
 
-@router.get("/search/substring", 
-    response_model=List[SongResponse],
-    responses={
-        401: {"description": "Authentication required"},
-        400: {"description": "Invalid search query"}
-    }
-)
+@router.get("/search/substring", response_model=None)
 async def search_substring(
     q: str = Query(..., min_length=1, max_length=100),
     limit: int = Query(10, ge=1, le=100),
@@ -283,13 +225,7 @@ async def search_substring(
     return await search_songs_substring(session, q, limit)
 
 
-@router.get("/search/similarity", 
-    response_model=List[SongResponse],
-    responses={
-        401: {"description": "Authentication required"},
-        400: {"description": "Invalid search query"}
-    }
-)
+@router.get("/search/similarity", response_model=None)
 async def search_similarity(
     q: str = Query(..., min_length=1, max_length=100),
     limit: int = Query(10, ge=1, le=100),
@@ -300,13 +236,7 @@ async def search_similarity(
     return await search_songs_similarity(session, q, limit)
 
 
-@router.get("/search/text", 
-    response_model=List[SongResponse],
-    responses={
-        401: {"description": "Authentication required"},
-        400: {"description": "Invalid search query"}
-    }
-)
+@router.get("/search/text", response_model=None)
 async def search_text(
     q: str = Query(..., min_length=1, max_length=100),
     limit: int = Query(10, ge=1, le=100),
