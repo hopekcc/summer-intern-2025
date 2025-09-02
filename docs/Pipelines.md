@@ -1,63 +1,278 @@
-# HopeKCC Backend Pipelines
+# HopeKCC Backend Pipelines (Combined, Implementation-Accurate)
 
-## Song Ingestion Pipeline
+_Last updated: September 2, 2025_
 
-This pipeline handles importing raw song files and preparing them for use in the app. The **`retrieve_songs.py`** script automates the process of fetching ChordPro files, generating viewable assets, and updating the database.
+This document consolidates the **Expanded** write-up and the implementation corrections into one source of truth. It covers ingestion, search indexing, realtime sync, CI/CD, configuration, and concrete response/asset shapes.
 
-- **ChordPro GitHub Sync:** The ingestion script connects to the HopeKCC songs GitHub repository (e.g. `hopekcc/song-db-chordpro`) to retrieve all `.cho` (ChordPro) files. It uses the GitHub API to list the repository contents (including subfolders) asynchronously. All `.cho` files found (across directories) are collected. The script then downloads any new or updated songs (skipping those already present) using parallel HTTP requests (limited by a semaphore for up to 10 concurrent downloads). Newly fetched songs are saved into a local `song_data/songs` directory and assigned a unique numeric ID in a `songs_metadata.json` map. It also cleans up “orphaned” songs (removed from the repo) by deleting the local file and removing their entry from metadata.
+---
 
-- **PDF Rendering:** For each song file, the pipeline generates a PDF using the ChordPro notation. If a ChordPro CLI binary is available (the path is set via the `CHORDPRO_PATH` environment variable), the script will invoke it to render a high-quality PDF of the song. The PDF is saved to `song_data/songs_pdf/{song_id}.pdf`. If the ChordPro binary is not available or fails, the script falls back to a built-in renderer that creates a simple monospaced PDF from the chord text. This ensures every song has a PDF representation for display or download.
+## 0) High-Level Overview
 
-- **Image Generation:** After producing the PDF, the pipeline generates web-friendly image thumbnails for each page. Using PyMuPDF and Pillow, it opens the PDF and converts each page to a WebP image file. These images are stored under `song_data/songs_img/{song_id}/page_{n}.webp` (one image per page). The first page (cover image) can be used as a thumbnail in the UI. This step runs only if images don’t exist yet or if re-generation is forced.
+- **Goal:** Serve a multi-user, room-based music reader that synchronizes **ChordPro** songs (PDF/WebP) in real time, with fast search and robust caching.
+- **Core subsystems:**  
+  1) **Song Ingestion** (GitHub → PDFs/WebP → DB + list)  
+  2) **Search Indexing** (substring, trigram, FTS)  
+  3) **Realtime Sync** (WebSocket events)  
+  4) **CI/CD** (setup, tests, deploy, ingestion)  
 
-- **Database Upsert:** As songs are processed, their metadata is inserted or updated in the PostgreSQL database. The app’s **Song** table stores fields like song ID, title, artist, key, tempo, genre, language, filename, and page count. The ingestion script parses each ChordPro file for metadata tags (e.g. `{title: ...}`, `{artist: ...}`) to gather these fields. It then **upserts** the record: if a song ID already exists in the DB, it updates the fields; if not, it creates a new entry. This way, the songs table stays in sync with the latest content from GitHub. The upsert is batched — all songs are processed and then a single commit writes all changes for efficiency.
+[Insert Diagram: System Architecture]
 
-- **Compressed Songs List:** After processing songs, the pipeline generates a compressed song index for quick client access. It creates a JSON structure containing each song’s ID, filename, and title, then writes it to a gzip-compressed file (`songs_list.json.gz`). This file allows the application to rapidly load the list of all songs (with minimal data transfer) when a client needs to browse songs. The `/songs/list` API endpoint serves this pre-generated gzip file (decoded to JSON) directly to clients for efficiency, rather than querying the entire songs table on each request.
 
-- **Configurable Options:** The ingestion process can be customized via command-line flags and environment variables. For example, running `retrieve_songs.py` with **`--reset-songs`** will delete all existing songs from the database before importing new ones, and **`--only-reset`** will wipe the songs table without further processing. The **`--regen-assets`** flag forces re-rendering of PDFs and images even if they exist (useful if rendering settings or source files changed). A **`--concurrency`** option allows adjusting the number of parallel file processing tasks (default 6). To control external integrations, **`--no-sync`** skips the GitHub fetch step (processing only local files), and **`--sync-only`** performs the GitHub sync and metadata update *without* generating PDFs/images. Environment variables are also used: `CHORDPRO_PATH` points to the ChordPro binary for PDF conversion, and `GITHUB_TOKEN` (if set) is used to authenticate GitHub API requests for higher rate limits. Additionally, the script can ensure the search indexes are in place by running with **`--ensure-search-infra`**, which will create the necessary PostgreSQL indexes for search (controlled by env vars as described in the next section).
+---
 
-[Insert Diagram: Song Ingestion Flow]
+## 1) Song Ingestion Pipeline
 
-## Search Indexing Pipeline
+Responsible for syncing raw `.cho` from GitHub, generating PDFs + WebP images, and upserting metadata into Postgres. It blends **`retrieve_songs.py`** (GitHub/files) and **`songs_db_pipeline_wrapper.py`** (orchestration).
 
-The HopeKCC backend supports fast lookup of songs by title or artist, including partial matches and full-text search. To enable this, the deployment includes a search indexing pipeline that prepares the PostgreSQL database with the appropriate extensions and indexes for efficient querying.
+### 1.1 GitHub Sync (ChordPro)
+- Connects to `hopekcc/song-db-chordpro` (or configured repo).  
+- Recursively enumerates directories via GitHub API; collects `.cho`. Handles pagination.
+- **Concurrency:** GitHub fetches use a fixed internal semaphore of **10** in `retrieve_songs.py` (not a CLI knob).
+- Stores files in `song_data/songs/` with unique numeric IDs tracked in `songs_metadata.json`.
+- **Orphans:** files removed upstream are deleted locally; metadata pruned.
+- **Reconciliation:** untracked local files get re-registered to avoid drift.
 
-- **pg_trgm Extension & Substring Search:** The PostgreSQL trigram extension (`pg_trgm`) is enabled to allow advanced string matching. The indexing setup script (**`enable_pg_trgm.sql`**) creates GIN indexes on the `songs.title` and `songs.artist` columns using trigram operators. These indexes significantly speed up case-insensitive substring matches (queries using `ILIKE '%...%'`). Without these GIN indexes, a search for a substring in song titles would require a full table scan; with trigram indexes, the database can use trigram-based index lookups to quickly filter results. The same indexes also lay the groundwork for more advanced similarity searches.
+### 1.2 PDF Rendering
+- If `CHORDPRO_PATH` points to a valid binary, generate production-quality PDFs; else use a safe **monospaced fallback** renderer.
+- Output: `song_data/songs_pdf/{song_id}.pdf`. A legacy title-based reader is still tolerated for backwards compatibility.
+- Failures warn and continue (fault tolerance).
 
-- **Trigram Similarity Support:** With `pg_trgm` enabled, the application can leverage trigram **similarity** queries to find approximate matches. The `%` operator (provided by pg_trgm) allows queries like `WHERE title % 'Grace'` to find titles similar to "Grace" even if not exact. The indexing pipeline ensures the trigram GIN indexes on title/artist are in place so that these similarity searches are efficient. In code, a function can compute `similarity(title, :q)` and rank results by how closely they match the query string. This enables fuzzy searching (e.g. minor typos or partial matches) with database-side scoring, which is much faster than computing similarity in Python for each song.
+### 1.3 Image Generation (WebP)
+- Converts PDFs → **WebP** via **PyMuPDF → PIL**.  
+- Path: `song_data/songs_img/{song_id}/page_{n}.webp` (first page is the “cover”).  
+- **Lazy regeneration:** skip if present unless `--regen-assets` is passed.
+- **Concurrency:** `--concurrency N` (default **4**) controls **PDF/WebP processing** workers (not GitHub fetches).
+- Served through: `/songs/{id}/image` (cover), `/songs/{id}/page/{n}` (page), `/rooms/{id}/image` (current song cover per room).
 
-- **Full-Text Search Index:** For more advanced search capabilities, the pipeline can set up a full-text search index on songs. In the indexing SQL, a generated column `ts` (type tsvector) is added to the songs table, combining the title and artist into a searchable text vector. The pipeline populates this `ts` column with `to_tsvector('simple', title || ' ' || artist)` for all existing rows. It then creates a GIN index on the `ts` column. With this in place, queries can use PostgreSQL full-text search (e.g. `WHERE ts @@ plainto_tsquery('simple', 'Grace hope')`) to find songs by words in the title or artist, with relevance ranking (`ts_rank`). This complements substring and trigram search by handling word-based queries intelligently (ignoring order and common stopwords, if configured). The full-text index uses the `'simple'` text search configuration (no stopword removal) to ensure even common words in titles (like "the", "of") are searchable unless otherwise specified.
+### 1.4 Database Upsert
+- Extracts tags from ChordPro: `{title, artist, key, tempo, genre, language}`.
+- Upsert = select-then-insert/update per song.
+- **Batched commit:** commit once after processing to reduce load.
 
-- **Concurrent vs. Non-Concurrent Indexing:** Building indexes on large tables can lock the table and impact running services, so the pipeline supports both concurrent and standard index creation. In a development or initial setup scenario, it’s acceptable to create indexes normally (faster, within a transaction). In production, the script will prefer `CREATE INDEX CONCURRENTLY` to avoid long locks on the `songs` table. The SQL setup script auto-detects the environment via an `ENVPROD` variable – if it’s running in a production mode, it sets all index creations to use the **CONCURRENTLY** option. Similarly, the Python ingestion pipeline respects an environment flag (`CONCURRENT_RUN`) or command-line `--allow-blocking` to decide this behavior programmatically. When `CONCURRENT_RUN` is true (default for production), the script executes index creation outside of any transaction and with the CONCURRENTLY keyword, so that the database can remain live while indexes build. In a local or test run, `CONCURRENT_RUN` can be false (or `--allow-blocking` used) to create indexes inside a transaction for simplicity. This concurrency toggle applies to all index types (trigram GIN, full-text GIN, and even a supporting B-tree index on title for fast sorting alphabetically). The end result is that search indexes are always created in an optimal way for the given environment, ensuring minimal downtime in production and quick setup in development.
+### 1.5 Compressed Songs List
+- Minimal index served by `/songs/list` with an **envelope** (not a bare array):
+
+```json
+{
+  "count": 1234,
+  "songs": [
+    { "id": 42, "filename": "amazing_grace.cho", "title": "Amazing Grace" }
+  ]
+}
+```
+
+[Insert Diagram: Ingestion & Asset Flow]
+
+
+### 1.6 CLI Reference (Ingestion/Assets)
+| Flag | Scope | Notes |
+|---|---|---|
+| `--sync-only` | ingestion | GitHub sync only (no populate) |
+| `--populate-only` | ingestion | Populate DB/assets from local files only |
+| `--dry-run` | ingestion | Log actions without writing |
+| `--force-download` | ingestion | Re-download even if unchanged |
+| `--no-cleanup` | ingestion | Keep temp artifacts |
+| `--songs-only <IDs>` | ingestion | Process only specified song IDs |
+| `--check-missing` | assets | Report missing PDFs/WebPs |
+| `--verify-assets` | assets | Validate PDFs/WebPs |
+| `--regen-assets` | assets | Force regenerate PDFs/WebPs |
+| `--concurrency N` | assets | Worker count for PDF/WebP processing |
+| `--reset-songs` | DB | Clear songs before repopulating |
+
+> Not present: `--no-sync`, `--only-reset`.
+
+---
+
+## 2) Search Indexing Pipeline
+
+Provides performant substring, **trigram similarity**, and **full-text search** (FTS).
+
+### 2.1 Substring Search (`ILIKE` + pg_trgm)
+- Ensure `pg_trgm` extension is installed.  
+- GIN indexes on `songs.title` and `songs.artist` accelerate `ILIKE '%text%'` via trigram filtering.
+
+### 2.2 Trigram Similarity
+- Use `%` operator + `similarity()` to find approximate matches; order by similarity desc.  
+- Ideal for “fuzzy title/artist” queries.
+
+### 2.3 Full-Text Search (FTS)
+- Controlled by `FTS_MODE ∈ {none, expr, column}`; **default: `column`**.
+- `column` mode adds `ts` (`tsvector`) column updated as:
+  `to_tsvector('simple', title || ' ' || artist)`
+- Indexed with GIN; queries use `plainto_tsquery('simple', :q)`; rank via `ts_rank`.
+
+### 2.4 Indexing Mode & Locks
+- `ENABLE_SEARCH_INDEXES` = **on** by default.  
+- `CONCURRENT_INDEXES` = **on** → uses `CREATE INDEX CONCURRENTLY` (non-blocking).  
+- Dev can force blocking with `--blocking-indexes` (faster locally).  
+- `--setup-search` ensures extensions/indexes/columns exist.
+
+### 2.5 HTTP Search Endpoints
+- `/songs/search/substring?q=grace`  
+- `/songs/search/similarity?q=amzing`  
+- `/songs/search/text?q=amazing grace`
 
 [Insert Diagram: Search Index Architecture]
 
-## Real-Time Sync Pipeline
 
-HopeKCC supports real-time collaboration in virtual “rooms” where multiple users can view the same song and stay in sync as pages change. The real-time sync pipeline is powered by a WebSocket server that broadcasts events (song changes, page turns, participant join/leave) to all clients in a room instantaneously, keeping everyone’s view updated.
+---
 
-- **WebSocket Server Setup:** Alongside the FastAPI web server (which handles HTTP requests), the application runs a dedicated WebSocket server thread for real-time events. On startup, the FastAPI app launches `start_websocket_server` in the background, which starts listening on a WebSocket port (default 8766). The WebSocket server uses a **MusicRoomFactory** (and associated protocol) to handle connections. Internally, it maintains a list of active rooms and connected clients. This server runs independently of the HTTP endpoints, but the two communicate via shared state: the HTTP routes will publish events through the WebSocket factory when certain actions occur.
+## 3) Realtime Sync Pipeline (WebSocket)
 
-- **Participant Join/Leave Events:** When a user joins a room via the REST API (`POST /rooms/{room_id}/join`), the backend updates the database (adding a RoomParticipant entry) and then notifies all listeners in that room over WebSocket. It creates a **`participant_joined`** event, containing the ID of the user who joined, and uses the WebSocket factory to broadcast this to the room. All clients currently connected to that room’s WebSocket channel will receive the event and can update their participant list in real time (e.g. showing the new user in the room). Conversely, when a user leaves a room (`POST /rooms/{room_id}/leave`), the server broadcasts a **`participant_left`** event to the remaining clients after removing that user in the database. The message includes the leaving user’s ID so UIs can remove them from the participant list. If the leaving user was the host or if that was the last participant, the room is closed entirely on the backend; in that case a **`room_closed`** event is broadcast instead, signaling clients to disable that room (e.g. navigate them out or show that the session ended).
+A dedicated WebSocket server keeps rooms in sync; REST is used for asset fetches.
 
-- **Song Selection Updates:** The host of a room can select a song to share with the room (via `POST /rooms/{room_id}/song`). This HTTP endpoint sets the room’s current song (and resets the page to 1) in the database, and then triggers a WebSocket broadcast to all participants in the room. The event is of type **`song_updated`**, and it carries a payload of metadata about the newly selected song: the song’s ID, title, artist, total page count, and a fresh image ETag for page 1. The clients receive this and know to load that song’s first page. Notably, the actual song PDF or image data isn’t sent via WebSocket (to keep the message lightweight); clients use the provided song ID to fetch the PDF or the first page image over HTTP if needed. The image ETag in the event helps clients determine if they should refetch the thumbnail (if the ETag differs from what they have cached, it means the image changed).
+### 3.1 Server & Rooms
+- Runs beside FastAPI on port **8766** (override with `WEBSOCKET_PORT`).
+- Managed by a room factory that tracks sockets per room and broadcasts events.
+- HTTP endpoints (join/leave/song/page) publish into the WebSocket layer.
 
-- **Page Change Updates:** Once a song is selected in a room, the host can flip pages (via `POST /rooms/{room_id}/page` with a new page number). The backend will validate and update the room’s `current_page` in the database, and log the page turn action. It then sends out a **`page_updated`** WebSocket event to everyone in the room, indicating the new page number. The event payload includes the `current_page` index and repeats the song’s ID and total pages, as well as an `image_etag` for the specific page image (if available). This informs clients to display the new page (and they can fetch the corresponding page image via HTTP using the provided ETag for cache validation). Like song changes, page updates are delivered instantly so that all participants turn pages in sync with the host’s view.
+### 3.2 Events (Canonical Shapes)
+```json
+{ "type": "participant_joined", "room_id": 12, "uid": "abc123" }
+{ "type": "participant_left",   "room_id": 12, "uid": "abc123" }
+{ "type": "room_closed",        "room_id": 12 }
 
-- **Broadcast Mechanism:** The WebSocket pipeline uses a publish-subscribe model where each room acts as a channel. The **MusicRoomFactory** keeps track of all active WebSocket connections, organized by room. Whenever an API call wants to broadcast an event, it calls `get_websocket_factory().broadcast_to_room(room_id, message)` to enqueue the message for that room. The factory ensures the message is delivered to every connected client in that room. If a room has no active WebSocket connections at the moment, the factory will log a warning or simply do nothing. To avoid race conditions, the REST API handlers also call `register_room(room_id)` on the factory when a room is created or before sending an event, guaranteeing that the room exists in the factory’s registry. The WebSocket server is optimized to handle frequent updates: it batches non-critical messages (queuing them and sending in a periodic flush), but for critical sync events like `song_updated` and `page_updated`, it bypasses the queue and pushes them out immediately. This design choice ensures there’s no noticeable delay in song/page synchronization. Overall, the real-time pipeline guarantees that any change in the shared session state (participants or song page) is propagated to all users within that room in real time.
+{
+  "type": "song_updated",
+  "room_id": 12,
+  "song_id": 42,
+  "title": "Amazing Grace",
+  "artist": "John Newton",
+  "total_pages": 2,
+  "current_page": 1,
+  "image_etag": "W/\"12345-1724639012\""
+}
+{
+  "type": "page_updated",
+  "room_id": 12,
+  "song_id": 42,
+  "current_page": 2,
+  "total_pages": 2,
+  "image_etag": "W/\"12345-1724639012\""
+}
+```
 
-[Insert Diagram: WebSocket Event Lifecycle]
+### 3.3 Caching (ETag Behavior)
+- ETags are **weak**: `W/"<size>-<mtime>"`.
+- **304 (If-None-Match)** short-circuit implemented for **`/rooms/{id}/image`**.
+- `/songs/{id}/image` and `/songs/{id}/page/{n}` return files with `ETag` + `Cache-Control`, but do **not** 304 yet.
 
-## CI/CD Pipeline
+**Example headers**
+```
+ETag: W/"12345-1724639012"
+Cache-Control: public, max-age=86400
+```
 
-To maintain reliability and ease of deployment, HopeKCC uses Continuous Integration/Continuous Deployment practices. The CI/CD pipeline ensures that code changes are tested and that the production environment is set up with all necessary data (songs and indexes) each time the application is deployed.
+[Insert Diagram: Realtime Message Flow]
 
-- **Environment Setup (Setup Script):** For both local development and server provisioning, the project includes a **`setup.sh`** script that automates initial setup tasks. This script creates a Python virtual environment and installs all Python dependencies from `requirements.txt`, ensuring the correct versions of libraries (FastAPI, SQLModel, PyMuPDF, etc.) are in place. It also prepares the file system structure needed by the app: for example, creating directories for logs, the room database, and song data (`song_data/songs`, `song_data/songs_pdf`, etc.). Next, it initializes the database schema by running the Python module that defines the database models. This step uses SQLModel/SQLAlchemy to create tables like Songs, Rooms, Participants if they don’t exist. By the end of this setup script, the environment is ready to ingest data and run the server.
 
-- **Automated Song Ingestion in Deployment:** A key part of the deployment pipeline is populating and updating the song data. The setup script automatically runs `python3 scripts/retrieve_songs.py` as part of the installation. In a CI/CD context, this means whenever a new instance of the app is deployed (or when the database is reset), the latest songs from the GitHub repo are pulled in and the song database is brought up-to-date. This step ensures that the deployed application always has the current set of worship songs, their PDFs, images, and search metadata without any manual intervention. On an update deploy (where the DB persists), this script can be run in a mode (e.g. without `--reset-songs`) to fetch any new songs and integrate them. If the deployment includes migrating to a new database, running the ingestion fresh will load all songs from scratch. The pipeline also takes care to set up search indexes at deploy time: for instance, one might run `retrieve_songs.py --ensure-search-infra --fts-mode=column` during deployment so that the trigram indexes and full-text index are created (if not already present) before the app starts accepting traffic.
+---
 
-- **Continuous Integration (CI) Testing:** The project is configured for automated testing. A **Pytest** configuration file is provided, indicating that tests are located in a `tests/` directory and using naming conventions (`test_*.py`). The presence of packages like `pytest` and `pytest-cov` in requirements suggests that the repository includes unit and integration tests. In CI, a workflow (such as GitHub Actions) would install the application’s dependencies and then run `pytest`. This will execute all test cases to verify that the backend functionality (from song ingestion to WebSocket events) works as expected. Tests are marked (e.g. `@pytest.mark.integration`) to allow selective runs; the CI can run fast unit tests on every push, and perhaps include slower integration tests in nightly builds or on a specific trigger. By enforcing that all tests pass before merging code, the pipeline prevents regressions in the ingestion, search, or sync logic. The CI can also generate a coverage report to ensure that critical parts of the pipeline are being tested.
+## 4) CI/CD Pipeline
 
-- **Continuous Deployment:** After tests pass, the CD pipeline takes over to deploy the app. In a typical setup, this could involve building a Docker image or pushing the code to a cloud service. The deployment process should replicate what `setup.sh` does in stages. First, it sets up the environment on the server (installing dependencies, running database migrations or initialization). Then it runs the song ingestion and search indexing steps. For example, a deployment script might call the ingestion with production-specific flags: **`--ensure-search-infra`** (to create any new indexes) and environment variables like `CONCURRENT_RUN=true` to make index creation non-blocking. If using the provided SQL script directly, the deployment would execute `enable_pg_trgm.sql` on the database with `ENVPROD=true` so that indexes build concurrently. By hooking these into the deploy pipeline, any time the app is released, it automatically has an up-to-date index and all songs loaded. Finally, the UVicorn server is launched (or restarted) to begin serving requests. Because the pipeline preloads all data and performs migrations before starting the app, the end users experience a seamless update with no manual sync steps required. All of these CI/CD measures make the system more robust: code is always vetted by tests, and each deployment is accompanied by the necessary data preparation (song sync and indexing) to keep the application’s content and search features in a production-ready state.
+Automates environment setup, ingestion, search setup, testing, and deployment.
 
-[Insert Diagram: Deployment & Automation Flow]
+### 4.1 Environment Setup
+- `setup.sh` creates venv, installs `requirements.txt`.
+- Creates directories: `logs/`, `song_data/songs`, `song_data/songs_pdf`, `song_data/songs_img`.
+- DB initialized with SQLModel/SQLAlchemy models.
+- `validate_environment` checks required files/env.
+
+### 4.2 Automated Ingestion on Deploy
+- Deployment runs `songs_db_pipeline_wrapper.py`:
+  - GitHub sync (as needed)
+  - Asset generation (PDF/WebP)
+  - DB upsert
+  - `--setup-search` to ensure search infra
+  - `--fts-mode {none|expr|column}` (default `column`)
+
+### 4.3 CI (Testing)
+- Pytest with markers: `unit`, `integration`, `slow`.  
+- `pytest-cov` for coverage; merges require passing tests.  
+- Tests cover ingestion, search, WebSocket paths.
+
+### 4.4 CD (Deployment)
+- After CI, provision env, run ingestion/index setup, and restart Uvicorn (FastAPI + WebSocket).  
+- `--blocking-indexes` may be used locally; production keeps concurrent creation.
+
+[Insert Diagram: CI/CD & Deployment Flow]
+
+
+---
+
+## 5) Configuration Reference
+
+### 5.1 Environment Variables
+- `CHORDPRO_PATH` — Path to ChordPro binary (optional; enables high-quality PDFs).
+- `WEBSOCKET_PORT` — Port for realtime server (default **8766**).
+- `FIREBASE_JSON` — Firebase credentials (JSON string).
+- `DB_STARTUP_CHECK` — Enable DB health check at startup.
+- `DB_HEALTHCHECK_TIMEOUT` — Health check timeout.
+- `FAIL_ON_DB_STARTUP_ERROR` — Abort if DB is unavailable.
+
+### 5.2 File & Directory Layout
+```
+song_data/
+  songs/                    # raw .cho inputs
+  songs_pdf/                # {song_id}.pdf
+  songs_img/
+    {song_id}/page_{n}.webp
+logs/
+```
+- Song list endpoint: `/songs/list` (JSON envelope with `count` + `songs[]`).
+
+### 5.3 Service Ports
+- WebSocket server: **8766** (override via env).  
+- FastAPI/Uvicorn: per service config/systemd.
+
+---
+
+## 6) API Quick Reference (Selected)
+
+- `GET /songs/list` → minimal index envelope (see §1.5)  
+- `GET /songs/{id}/image` → cover image (WebP)  
+- `GET /songs/{id}/page/{n}` → specific page (WebP)  
+- `GET /rooms/{id}/image` → room’s current song cover (WebP, 304-aware)  
+- `POST /rooms/{id}/join` → register participant + broadcast  
+- `POST /rooms/{id}/leave` → deregister + broadcast  
+- `POST /rooms/{id}/song` → host sets song + broadcast  
+- `POST /rooms/{id}/page` → host sets page + broadcast  
+- `GET /songs/search/substring?q=...`  
+- `GET /songs/search/similarity?q=...`  
+- `GET /songs/search/text?q=...`
+
+---
+
+## 7) Operational Notes
+
+- Fault tolerance: ingestion logs and continues on per-file failures.  
+- Idempotency: syncing + upserts are safe to re-run.  
+- Performance: cache headers + ETags minimize bandwidth; DB writes batched.
+
+---
+
+## 8) Appendix: Response & Event Shapes
+
+### 8.1 `/songs/list`
+```json
+{
+  "count": 1234,
+  "songs": [
+    { "id": 42, "filename": "amazing_grace.cho", "title": "Amazing Grace" }
+  ]
+}
+```
+
+### 8.2 WebSocket Events
+See §3.2 for the canonical examples.
+
+### 8.3 HTTP Cache Headers
+```
+ETag: W/"<size>-<mtime>"
+Cache-Control: public, max-age=86400
+```
+
+---
+
+### Change Log
+- **2025-09-02:** Consolidated expanded doc + corrections; clarified ETag/304 behavior; fixed concurrency & CLI flags; added endpoint list and quick ops notes.
