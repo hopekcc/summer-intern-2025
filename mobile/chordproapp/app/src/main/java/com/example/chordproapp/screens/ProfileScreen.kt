@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -108,6 +109,13 @@ fun ProfileScreen(
                     color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.padding(bottom = 32.dp)
                 )
+                IconButton(onClick = { playlistViewModel.loadAllPlaylists() }) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = "Refresh Playlists",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
 
             item {
@@ -424,10 +432,6 @@ fun Playlist(
                 )
             }
 
-            items(playlist.songs.size) {
-                SongButton(onClick = {})
-                Spacer(modifier = Modifier.height(12.dp))
-            }
 
             //Check if the playlist has any songs
             if (playlist.songs.isEmpty()) {
@@ -447,8 +451,14 @@ fun Playlist(
                     }
                 }
             } else {
-                items(playlist.songs.size) { index ->
-                    SongButton(onClick = {})
+                items(playlist.songs) { song ->
+                    SongButton(
+                        songTitle = song.title,
+                        composer = song.artist,
+                        onClick = {
+                            navController.navigate("viewer/${song.id}/${song.pageCount}")
+                        }
+                    )
                     Spacer(modifier = Modifier.height(12.dp))
                 }
             }
@@ -457,14 +467,12 @@ fun Playlist(
 }
 
 @Composable
-fun SongButton(onClick: () -> Unit) {
+fun SongButton(songTitle: String, composer: String, onClick: () -> Unit) {
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         border = CardDefaults.outlinedCardBorder()
     ) {
@@ -475,19 +483,14 @@ fun SongButton(onClick: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "Music Sheet Name",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                "Composer",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
+            Text(songTitle, style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface)
+            Text(composer, style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
         }
     }
 }
+
 
 @Composable
 fun AllPlaylists(

@@ -178,7 +178,7 @@ fun SearchScreen(
 
                 items(searchResults) { song ->
                     var expanded by remember { mutableStateOf(false) }
-                    var selectedPlaylist by remember { mutableStateOf<Playlist?>(null) }
+                    val playlists by playlistViewModel.playlists.collectAsState()
 
                     Card(
                         modifier = Modifier
@@ -209,85 +209,75 @@ fun SearchScreen(
                                 )
                             }
 
-                                Column {
+                            Column {
+                                Button(
+                                    onClick = { navController.navigate("viewer/${song.id}/${song.pageCount}") },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.secondary,
+                                        contentColor = MaterialTheme.colorScheme.primary
+                                    ),
+                                    shape = RoundedCornerShape(12.dp),
+                                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+                                ) {
+                                    Text(
+                                        "View Sample Sheet",
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+
+                                // Add to Playlist Dropdown
+                                Box {
                                     Button(
-                                        onClick = {
-                                            navController.navigate("viewer/${song.id}/${song.pageCount}")
-                                        },
+                                        onClick = { expanded = true },
                                         colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.secondary,
-                                            contentColor = MaterialTheme.colorScheme.primary
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
                                         ),
                                         shape = RoundedCornerShape(12.dp),
                                         elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                                     ) {
-                                        Text(
-                                            "View Sample Sheet",
-                                            style = MaterialTheme.typography.labelMedium
+                                        Text("Add to", style = MaterialTheme.typography.labelMedium)
+                                        Icon(
+                                            Icons.Default.LibraryMusic,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(25.dp).padding(start = 8.dp)
                                         )
                                     }
 
+                                    DropdownMenu(
+                                        expanded = expanded,
+                                        onDismissRequest = { expanded = false }
+                                    ) {
+                                        playlists.forEach { playlist ->
+                                            // Check if song already exists
+                                            val alreadyAdded = playlist.songs.any { it.id == song.id }
 
-                                    // Add to playlist
-                                    Box {
-                                        Button(
-                                            onClick = { expanded = true },
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.primary,
-                                                contentColor = MaterialTheme.colorScheme.onPrimary
-                                            ),
-                                            shape = RoundedCornerShape(12.dp),
-                                            elevation = ButtonDefaults.buttonElevation(
-                                                defaultElevation = 2.dp
-                                            )
-                                        ) {
-                                            Text(selectedPlaylist?.name ?: "Add to",
-                                                style = MaterialTheme.typography.labelMedium)
-                                            Icon(
-                                                Icons.Default.LibraryMusic,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(25.dp)
-                                                    .padding(start = 8.dp)
-                                            )
-                                        }
-
-                                        DropdownMenu(
-                                            expanded = expanded,
-                                            onDismissRequest = { expanded = false }
-                                        ) {
-                                            playlists.forEach { playlist ->
-                                                DropdownMenuItem(
-                                                    text = { Text(playlist.name) },
-                                                    onClick = {
-                                                        selectedPlaylist = playlist
-                                                        expanded = false
-
-                                                        // Call ViewModel with callback for Snackbar
-                                                        playlistViewModel.addSongToPlaylist(
-                                                            playlist.id,
-                                                            song.id
-                                                        ) { success ->
+                                            DropdownMenuItem(
+                                                text = { Text(playlist.name + if (alreadyAdded) " ✅" else "") },
+                                                onClick = {
+                                                    expanded = false
+                                                    if (!alreadyAdded) {
+                                                        playlistViewModel.addSongToPlaylist(playlist.id, song) { success ->
                                                             coroutineScope.launch {
                                                                 val message = if (success) {
                                                                     "Added to ${playlist.name}"
                                                                 } else {
                                                                     "Failed to add to ${playlist.name}"
                                                                 }
-                                                                snackbarHostState.showSnackbar(
-                                                                    message
-                                                                )
+                                                                snackbarHostState.showSnackbar(message)
                                                             }
                                                         }
                                                     }
-                                                )
-                                            }
+                                                }
+                                            )
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                } else if (!isLoading && query.isNotEmpty()) {
+                }
+            } else if (!isLoading && query.isNotEmpty()) {
                     item {
                         Box(
                             modifier = Modifier

@@ -38,19 +38,29 @@ class PlaylistRepository(tokenProvider: () -> String?) {
         }
     }
 
-    suspend fun addSongsToPlaylist(playlistId: String, songId: Int): Boolean {
+    suspend fun addSongsToPlaylist(playlistId: String, songId: String): Boolean {
         return try {
-            val response = api.addSongs(playlistId, songId)
-            val body = response.body()
-            println("Add song response: $body") // debug
-            response.isSuccessful && (body?.success == true)
+            println("[DEBUG] Adding song $songId to playlist $playlistId")
+            val response = api.addSongs(playlistId, PlaylistApiService.AddSongRequest(songId))
+            println("[DEBUG] API Response: ${response.code()}, Success: ${response.isSuccessful}")
+
+            if (response.isSuccessful) {
+                val body = response.body()
+                println("[DEBUG] Response body: $body")
+                val success = body?.success == true
+                println("[DEBUG] Final success result: $success")
+                success
+            } else {
+                println("[DEBUG] API call failed with code: ${response.code()}")
+                println("[DEBUG] Error body: ${response.errorBody()?.string()}")
+                false
+            }
         } catch (e: Exception) {
-            println("Add song exception: ${e.message}") // debug
+            println("[DEBUG] Exception in addSongsToPlaylist: ${e.message}")
+            e.printStackTrace()
             false
         }
     }
-
-
 
     suspend fun listAllPlaylists(): List<Playlist> {
         return try {

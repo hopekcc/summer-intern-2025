@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chordproapp.data.model.Playlist
+import com.example.chordproapp.data.model.Song
 import com.example.chordproapp.data.repository.PlaylistRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -57,11 +58,19 @@ class PlaylistViewModel(
         }
     }
 
-    fun addSongToPlaylist(playlistId: String, songId: Int, onResult: (Boolean) -> Unit) {
+    fun addSongToPlaylist(playlistId: String, song: Song, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
-            val success = repository.addSongsToPlaylist(playlistId, songId)
-            if (success) loadAllPlaylists()
-            else _errorMessage.value = "Failed to add song"
+            val success = repository.addSongsToPlaylist(playlistId, song.id.toString())
+            if (success) {
+                // Immediately update local state
+                _playlists.value = _playlists.value.map { pl ->
+                    if (pl.id == playlistId && !pl.songs.contains(song)) {
+                        pl.copy(songs = pl.songs + song)
+                    } else pl
+                }
+            } else {
+                _errorMessage.value = "Failed to add song"
+            }
             onResult(success)
         }
     }
@@ -83,3 +92,6 @@ class PlaylistViewModel(
         }
     }
 }
+
+
+
