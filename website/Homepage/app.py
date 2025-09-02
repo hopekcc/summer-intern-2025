@@ -8,7 +8,6 @@
 # - NEW: Rooms with random codes (create + join)
 # - NEW: /pdf/stream/<song_id> proxy endpoint (no "page" param; server-side token verify)
 # -----------------------------------------------------------------------------
-
 import os
 import re  # regex
 import datetime
@@ -16,13 +15,12 @@ import random
 import string
 import requests  # NEW: for proxying to FastAPI
 import json
-
+import time
 from flask import (
     Flask, render_template, request, send_from_directory,
     url_for, abort, make_response, redirect, jsonify, Response  # NEW: Response for streaming
 )
 from werkzeug.utils import secure_filename
-
 import firebase_admin
 from firebase_admin import credentials, auth as admin_auth
 
@@ -34,11 +32,6 @@ app = Flask(__name__)
 # Make sure serviceAccountKey.json is present in project root (DO NOT commit it)
 cred = credentials.Certificate("serviceAccountKey.json")
 firebase_admin.initialize_app(cred)
-
-# -----------------------------------------------------------------------------
-# Room Data Storage
-# -----------------------------------------------------------------------------
-rooms_data = {}
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -87,13 +80,11 @@ def session_login():
     id_token = data.get("idToken")
     if not id_token:
         return ("Missing idToken", 400)
-
     expires_in = datetime.timedelta(days=5)
     try:
         session_cookie = admin_auth.create_session_cookie(id_token, expires_in=expires_in)
     except Exception as e:
         return (f"Failed to create session cookie: {e}", 401)
-
     resp = make_response("ok")
     resp.set_cookie(
         "session",
@@ -191,7 +182,6 @@ def create_playlist():
     except Exception as e:
         return jsonify({'error': 'Failed to save playlist'}), 500
 
-
 @app.route('/api/playlists', methods=['GET'])
 def get_playlists():
     """Get user's playlists (requires authentication)"""
@@ -248,22 +238,17 @@ def pdf_stream(song_id):
     id_token = request.args.get("token")
     if not id_token:
         abort(400, description="Missing token")
-
     claims = verify_id_token(id_token)
     if not claims:
         abort(401)
-
     url = f"{BACKEND_BASE}/songs/{song_id}/pdf"
     headers = {"Authorization": f"Bearer {id_token}"}
-
     try:
         upstream = requests.get(url, headers=headers, stream=True, timeout=30)
     except requests.RequestException:
         abort(502)
-
     if upstream.status_code != 200:
         abort(upstream.status_code)
-
     return Response(upstream.iter_content(8192), content_type="application/pdf")
 
 # -----------------------------------------------------------------------------
@@ -278,7 +263,6 @@ def search_artist():
                "John", "Ryan", "Sophie", "Trevor",
                "Uno", "Vivian", "William", "Xanthos",
                "Yerson", "Zachery"]
-
     letter = request.args.get("letter", "A").upper()
     filtered = [artist for artist in artists if artist.upper().startswith(letter)]
     return render_template("search_artist.html", letter=letter, artists=filtered)
@@ -291,7 +275,6 @@ def search_title():
         "Fix You", "Believer", "Blinding Lights", "Starboy",
         "Love Story", "Love Me Like You Do", "Neveda"
     ]
-
     results, keyword = [], ""
     if request.method == "POST":
         keyword = (request.form.get("keyword", "")).strip().lower()
@@ -303,85 +286,14 @@ def search_title():
     return render_template("search_title.html", keyword=keyword, results=results)
 
 # -----------------------------------------------------------------------------
-# Room Routes WITH WEBSOCKET BROADCASTING
+# Room Routes - Proxy to WebSocket Server
 # -----------------------------------------------------------------------------
-# Updated Flask routes to work with WebSocket server
-'''
-@app.route("/rooms/", methods=["POST"])
-def create_room_api():
-    """Proxy room creation to WebSocket server for real-time sync"""
-    try:
-        auth_header = request.headers.get('Authorization')
-        headers = {'Content-Type': 'application/json'}
-        
-        if auth_header:
-            headers['Authorization'] = auth_header
-        
-        print(f"Proxying room creation to WebSocket server")
-        
-        # Forward to WebSocket server that has the rooms endpoints
-        response = requests.post(
-            'http://34.125.143.141:8000/rooms/', 
-            headers=headers,
-            json={},  # Empty payload, let WebSocket server generate room
-            timeout=10
-        )
-        
-        print(f"WebSocket server response: {response.status_code}")
-        
-        if response.status_code in [200, 201]:
-            data = response.json()
-            # Handle different response formats
-            room_code = data.get('code') or data.get('room_id') or data.get('id')
-            
-            if room_code:
-                return jsonify({"code": room_code})
-            else:
-                return jsonify({"error": "Room created but no ID returned"}), 500
-        else:
-            print(f"WebSocket server error: {response.status_code} - {response.text}")
-            return jsonify({"error": "Failed to create room on server"}), response.status_code
-            
-    except requests.RequestException as e:
-        print(f"Connection to WebSocket server failed: {e}")
-        return jsonify({"error": "Room server unavailable"}), 502
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-        return jsonify({"error": "Internal server error"}), 500
-
-@app.route("/rooms/create")
-def create_room():
-    """Create room via WebSocket server and redirect"""
-    try:
-        # Create room on WebSocket server
-        response = requests.post('http://34.125.143.141:8000/rooms/', 
-                               json={}, 
-                               timeout=10)
-        
-        if response.status_code in [200, 201]:
-            data = response.json()
-            room_code = data.get('code') or data.get('room_id') or data.get('id')
-            
-            if room_code:
-                return redirect(url_for("room_page", room_id=room_code))
-            else:
-                return "Room created but no ID returned", 500
-        else:
-            print(f"Failed to create room: {response.status_code}")
-            return f"Failed to create room: {response.status_code}", 500
-            
-    except requests.RequestException as e:
-        print(f"Connection error: {e}")
-        return "Room server unavailable", 502
-'''
-
 @app.route("/rooms/", methods=["POST"])
 def create_room_api():
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         # FastAPI requires auth; fail fast so the UI can show a clear message
         return jsonify({"error": "Authorization token required"}), 401
-
     try:
         r = requests.post(
             f"{BACKEND_BASE}/rooms/",
@@ -411,288 +323,14 @@ def room_page(room_id):
     """Render room page - let WebSocket handle all room logic"""
     return render_template("room.html", room_id=room_id)
 
-# Remove the old room_page_and_details function since we're not using Flask for room data anymore
-
 @app.route("/rooms/join", methods=["GET", "POST"])
 def join_room():
     if request.method == "POST":
         code = (request.form.get("room_code", "")).strip().upper()
         if not code:
             return render_template("join_room.html", error="Please enter the room code")
-        return redirect(url_for("room_page", room_id=code))   # <-- was room_page_and_details
+        return redirect(url_for("room_page", room_id=code))
     return render_template("join_room.html")
-
-'''
-@app.route("/rooms/<room_id>", methods=["GET"])
-def room_page_and_details(room_id):
-    """Combined: room page rendering AND room details API"""
-    
-    # If it's an API call (has Authorization header), return JSON data
-    auth_header = request.headers.get('Authorization')
-    if auth_header:
-        return get_room_details_internal(room_id)
-    
-    # Otherwise, render the room template
-    # If room doesn't exist, create it (for direct URL access)
-    if room_id not in rooms_data:
-        rooms_data[room_id] = {
-            "code": room_id,
-            "host_id": None,  # No host for directly accessed rooms
-            "song_id": None,
-            "page": 1,
-            "created_at": datetime.datetime.utcnow().isoformat()
-        }
-        print(f"Auto-created room {room_id} (no host)")
-    
-    return render_template("room.html", room_id=room_id)
-    
-
-def get_room_details_internal(room_id):
-    """Internal function to get room details as JSON"""
-    if room_id not in rooms_data:
-        return jsonify({"error": "Room not found"}), 404
-    
-    room_data = rooms_data[room_id]
-    print(f"Returning room data for {room_id}: {room_data}")  # Debug log
-    
-    # Verify user has access (basic auth check)
-    auth_header = request.headers.get('Authorization')
-    if auth_header and auth_header.startswith('Bearer '):
-        token = auth_header.split(' ')[1]
-        try:
-            decoded_token = verify_id_token(token)
-            if decoded_token:
-                # User is authenticated, return full data
-                return jsonify(room_data)
-        except Exception as e:
-            print(f"Token verification error: {e}")
-            return jsonify({"error": "Unauthorized"}), 401
-    
-    # No valid auth - return limited data
-    return jsonify({
-        "code": room_data["code"],
-        "host_id": room_data["host_id"],
-        "song_id": room_data["song_id"], 
-        "page": room_data["page"]
-    })
-    '''
-
-# NEW: Select Song For Room endpoint WITH BROADCASTING
-@app.route("/rooms/<room_id>/song", methods=["POST"])
-def select_song_for_room(room_id):
-    """Select Song For Room - NOW WITH WEBSOCKET BROADCASTING"""
-    if room_id not in rooms_data:
-        return jsonify({"error": "Room not found"}), 404
-    
-    # Verify user is authenticated and is the host
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return jsonify({"error": "Authorization required"}), 401
-    
-    token = auth_header.split(' ')[1]
-    try:
-        decoded_token = verify_id_token(token)
-        if not decoded_token:
-            return jsonify({"error": "Invalid token"}), 401
-        
-        user_id = decoded_token['uid']
-        if rooms_data[room_id]['host_id'] != user_id:
-            return jsonify({"error": "Only host can select songs"}), 403
-            
-    except Exception as e:
-        print(f"Token verification error: {e}")
-        return jsonify({"error": "Authentication failed"}), 401
-    
-    # Get song_id from request body
-    data = request.get_json()
-    if not data or 'song_id' not in data:
-        return jsonify({"error": "song_id required"}), 400
-    
-    song_id = data['song_id'].strip()
-    if not song_id:
-        return jsonify({"error": "song_id cannot be empty"}), 400
-    
-    # Update room data
-    rooms_data[room_id]['song_id'] = song_id
-    rooms_data[room_id]['page'] = 1  # Reset to page 1 when changing songs
-    
-    print(f"Room {room_id}: Host selected song '{song_id}'")
-    return jsonify({"message": "Song selected successfully"})
-
-# NEW: Update Room Page endpoint WITH BROADCASTING
-@app.route("/rooms/<room_id>/page", methods=["POST"])
-def update_room_page(room_id):
-    """Update Room Page - NOW WITH WEBSOCKET BROADCASTING"""
-    if room_id not in rooms_data:
-        return jsonify({"error": "Room not found"}), 404
-    
-    # Verify user is authenticated and is the host
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return jsonify({"error": "Authorization required"}), 401
-    
-    token = auth_header.split(' ')[1]
-    try:
-        decoded_token = verify_id_token(token)
-        if not decoded_token:
-            return jsonify({"error": "Invalid token"}), 401
-        
-        user_id = decoded_token['uid']
-        if rooms_data[room_id]['host_id'] != user_id:
-            return jsonify({"error": "Only host can change pages"}), 403
-            
-    except Exception as e:
-        print(f"Token verification error: {e}")
-        return jsonify({"error": "Authentication failed"}), 401
-    
-    # Get page from request body
-    data = request.get_json()
-    if not data or 'page' not in data:
-        return jsonify({"error": "page required"}), 400
-    
-    try:
-        page = int(data['page'])
-        if page < 1:
-            return jsonify({"error": "page must be >= 1"}), 400
-    except (ValueError, TypeError):
-        return jsonify({"error": "page must be a number"}), 400
-    
-    # Update room data
-    rooms_data[room_id]['page'] = page
-    
-    print(f"Room {room_id}: Host changed to page {page}")
-    return jsonify({"message": "Page updated successfully"})
-
-@app.route("/rooms/<room_id>/image", methods=["GET"])
-def get_room_image(room_id):
-    """Get Room Current Image - proxy to production backend"""
-    if room_id not in rooms_data:
-        return jsonify({"error": "Room not found"}), 404
-    
-    # Verify authentication
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return jsonify({"error": "Authorization required"}), 401
-    
-    token = auth_header.split(' ')[1]
-    try:
-        decoded_token = verify_id_token(token)
-        if not decoded_token:
-            return jsonify({"error": "Invalid token"}), 401
-    except Exception as e:
-        print(f"Token verification error: {e}")
-        return jsonify({"error": "Authentication failed"}), 401
-    
-    room_data = rooms_data[room_id]
-    song_id = room_data.get('song_id')
-    page = room_data.get('page', 1)
-    
-    if not song_id:
-        return jsonify({"error": "No song selected"}), 404
-    
-    # Call the production backend for images
-    try:
-        # Use the production server for images
-        image_url = f"http://34.125.143.141:8000/songs/{song_id}/image"
-        headers = {"Authorization": f"Bearer {token}"}
-        params = {"page": page}
-        
-        print(f"Calling production image URL: {image_url} with page={page}")
-        response = requests.get(image_url, headers=headers, params=params, timeout=30)
-        
-        if response.status_code == 200:
-            # Return the image directly
-            content_type = response.headers.get('content-type', 'image/png')
-            return Response(response.content, mimetype=content_type)
-        else:
-            print(f"Production backend image error: {response.status_code}")
-            # Fallback to SVG placeholder if production server fails
-            return generate_placeholder_image(song_id, page)
-            
-    except requests.RequestException as e:
-        print(f"Error calling production backend: {e}")
-        # Fallback to SVG placeholder
-        return generate_placeholder_image(song_id, page)
-        
-def generate_placeholder_image(song_id, page):
-    """Generate SVG placeholder when production backend is unavailable"""
-    svg_content = f'''
-    <svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
-        <rect width="100%" height="100%" fill="#f8f9fa" stroke="#dee2e6" stroke-width="2"/>
-        <text x="400" y="200" font-family="Arial" font-size="48" text-anchor="middle" fill="#495057">
-            Song: {song_id}
-        </text>
-        <text x="400" y="280" font-family="Arial" font-size="36" text-anchor="middle" fill="#dc3545">
-            Page: {page}
-        </text>
-        <text x="400" y="420" font-family="Arial" font-size="16" text-anchor="middle" fill="#6c757d">
-            (Placeholder - Production server unavailable)
-        </text>
-        <!-- Visual page indicator -->
-        <circle cx="{50 + (page * 30) % 700}" cy="500" r="20" fill="#0d6efd"/>
-        <text x="{50 + (page * 30) % 700}" y="507" font-family="Arial" font-size="14" text-anchor="middle" fill="white">
-            {page}
-        </text>
-    </svg>
-    '''
-    
-    response = Response(svg_content, mimetype='image/svg+xml')
-    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-    response.headers['Pragma'] = 'no-cache'
-    response.headers['Expires'] = '0'
-    
-    return response
-'''
-# Updated: Get Room Current Image endpoint
-@app.route("/rooms/<room_id>/image", methods=["GET"])
-def get_room_image(room_id):
-    """Get Room Current Image - call backend image endpoint directly"""
-    if room_id not in rooms_data:
-        return jsonify({"error": "Room not found"}), 404
-    
-    # Verify authentication
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return jsonify({"error": "Authorization required"}), 401
-    
-    token = auth_header.split(' ')[1]
-    try:
-        decoded_token = verify_id_token(token)
-        if not decoded_token:
-            return jsonify({"error": "Invalid token"}), 401
-    except Exception as e:
-        print(f"Token verification error: {e}")
-        return jsonify({"error": "Authentication failed"}), 401
-    
-    room_data = rooms_data[room_id]
-    song_id = room_data.get('song_id')
-    page = room_data.get('page', 1)
-    
-    if not song_id:
-        return jsonify({"error": "No song selected"}), 404
-    
-    # Call your FastAPI backend image endpoint
-    try:
-        # Try common image endpoint patterns
-        image_url = f"{BACKEND_BASE}/songs/{song_id}/image"
-        headers = {"Authorization": f"Bearer {token}"}
-        params = {"page": page}
-        
-        print(f"Calling image URL: {image_url} with page={page}")
-        response = requests.get(image_url, headers=headers, params=params, timeout=30)
-        
-        if response.status_code == 200:
-            # Return the image directly
-            content_type = response.headers.get('content-type', 'image/png')
-            return Response(response.content, mimetype=content_type)
-        else:
-            print(f"Backend image error: {response.status_code}")
-            return jsonify({"error": f"Image not found for song '{song_id}'"}), 404
-            
-    except requests.RequestException as e:
-        print(f"Error calling backend for image: {e}")
-        return jsonify({"error": "Backend unavailable"}), 502
-        '''
 
 # Legacy route for backward compatibility
 @app.route("/api/rooms", methods=["POST"])
