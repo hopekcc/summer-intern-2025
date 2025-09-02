@@ -306,7 +306,7 @@ def search_title():
 # Room Routes WITH WEBSOCKET BROADCASTING
 # -----------------------------------------------------------------------------
 # Updated Flask routes to work with WebSocket server
-
+'''
 @app.route("/rooms/", methods=["POST"])
 def create_room_api():
     """Proxy room creation to WebSocket server for real-time sync"""
@@ -373,7 +373,39 @@ def create_room():
     except requests.RequestException as e:
         print(f"Connection error: {e}")
         return "Room server unavailable", 502
+'''
 
+@app.route("/rooms/", methods=["POST"])
+def create_room_api():
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        # FastAPI requires auth; fail fast so the UI can show a clear message
+        return jsonify({"error": "Authorization token required"}), 401
+
+    try:
+        r = requests.post(
+            f"{BACKEND_BASE}/rooms/",
+            headers={"Authorization": auth_header, "Content-Type": "application/json"},
+            json={}, timeout=10
+        )
+        # helpful debug
+        print("Create room status:", r.status_code, "body:", r.text)
+        if r.status_code in (200, 201):
+            data = r.json()
+            code = data.get("code") or data.get("room_id") or data.get("id")
+            if code:
+                return jsonify({"code": code})
+            return jsonify({"error": "Room created but no ID returned"}), 502
+        return jsonify({"error": r.text or "Failed to create room"}), r.status_code
+    except requests.RequestException as e:
+        print("Room proxy error:", e)
+        return jsonify({"error": "Room server unavailable"}), 502
+
+@app.route("/rooms/create")
+def create_room():
+    # Render a trampoline page that does client-side create + redirect
+    return render_template("create_room_trampoline.html")
+    
 @app.route("/rooms/<room_id>", methods=["GET"])
 def room_page(room_id):
     """Render room page - let WebSocket handle all room logic"""
@@ -387,7 +419,7 @@ def join_room():
         code = (request.form.get("room_code", "")).strip().upper()
         if not code:
             return render_template("join_room.html", error="Please enter the room code")
-        return redirect(url_for("room_page_and_details", room_id=code))
+        return redirect(url_for("room_page", room_id=code))   # <-- was room_page_and_details
     return render_template("join_room.html")
 
 '''

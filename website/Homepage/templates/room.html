@@ -68,6 +68,11 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
   import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
 
+  // === CONFIG ===
+  const BACKEND_HTTP = "http://34.125.143.141:8000";           // REST (per docs)
+  const BACKEND_WS   = "ws://34.125.143.141:8000/ws";           // WS endpoint
+  const roomId = "{{ room_id }}";
+
   const firebaseConfig = {
     apiKey: "AIzaSyAQ3r-8kqsWOgBkWRKs-bApV33oeu-AICs",
     authDomain: "hopekcc-2024-summer-intern-api.firebaseapp.com",
@@ -76,11 +81,8 @@
     messagingSenderId: "172531116306",
     appId: "1:172531116306:web:d898ae28b5f79a425babcb"
   };
-  
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
 
-  const roomId = "{{ room_id }}";
+  // === DOM ===
   const vSong = document.getElementById("v-song");
   const vPage = document.getElementById("v-page");
   const songImage = document.getElementById("song-image");
@@ -97,484 +99,336 @@
   const nextBtn = document.getElementById("next");
   const refreshBtn = document.getElementById("refresh-status");
 
-  let socket = null;
+  // === STATE ===
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+
   let idToken = null;
   let currentUser = null;
   let isHost = false;
-  let roomData = null;
-  let lastUpdateTime = 0;
-  let reconnectInterval = null;
-  let shouldReconnect = true;
+  let roomState = { host_id: null, current_song: "", current_page: 1 };
+
+  let socket = null;
+  let reconnectTimer = null;
   let isConnecting = false;
 
-  // WebSocket connection URL
-  function getWebSocketUrl() {
-    if (!idToken) return null;
-    const scheme = location.protocol === "https:" ? "wss" : "ws";
-    return `${scheme}://34.125.143.141:8000/ws?token=${encodeURIComponent(idToken)}`;
-  }
-
-  // Authentication state listener
-  onAuthStateChanged(auth, async (user) => {
-    currentUser = user;
-    
-    if (!user) {
-      // User not signed in - clean up connections
-      shouldReconnect = false;
-      
-      if (reconnectInterval) {
-        clearInterval(reconnectInterval);
-        reconnectInterval = null;
-      }
-      
-      if (socket) {
-        await closeExistingConnection();
-      }
-      
-      // Reset UI
-      idToken = null;
-      isHost = false;
-      showAuthStatus("Please sign in to view and sync the room.", "error");
-      hostControls.style.display = 'none';
-      hostStatus.style.display = 'block';
-      hostStatus.textContent = "Please sign in to participate.";
-      hostStatus.style.color = '#d00';
-      connectionStatus.textContent = "Not connected";
-      connectionStatus.style.color = '#6c757d';
-      imageHint.textContent = "Please sign in to view the song.";
-      songImage.style.display = 'none';
-      return;
-    }
-
-    // User signed in - get token and initialize
-    console.log('User signed in:', user.uid);
-    try {
-      idToken = await user.getIdToken(true);
-      console.log('Token obtained');
-      showAuthStatus(`Signed in as ${user.email}`, "success");
-      
-      shouldReconnect = true;
-      
-      // Initialize WebSocket connection - this will handle room state
-      initializeWebSocket();
-      
-    } catch (error) {
-      console.error('Error getting ID token:', error);
-      showAuthStatus("Authentication error. Please refresh the page.", "error");
-    }
-  });
-
-  function showAuthStatus(message, type) {
-    authMessage.textContent = message;
+  // === HELPERS ===
+  function showAuthStatus(msg, type) {
+    authMessage.textContent = msg;
     authStatus.style.display = 'block';
-    
     if (type === 'success') {
-      authStatus.style.backgroundColor = '#d1fae5';
+      authStatus.style.background = '#d1fae5';
       authStatus.style.color = '#065f46';
       authStatus.style.border = '1px solid #10b981';
-    } else if (type === 'error') {
-      authStatus.style.backgroundColor = '#fef2f2';
+    } else {
+      authStatus.style.background = '#fef2f2';
       authStatus.style.color = '#991b1b';
       authStatus.style.border = '1px solid #ef4444';
     }
   }
 
-  // Make authenticated API request to WebSocket server
-  async function makeAuthenticatedRequest(url, options = {}) {
-    if (!idToken) {
-      throw new Error('Not authenticated');
-    }
-    
+  async function authedFetch(url, opts = {}) {
+    if (!idToken) throw new Error("Not authenticated");
     const headers = {
-      'Authorization': `Bearer ${idToken}`,
-      'Content-Type': 'application/json',
-      ...options.headers
+      ...(opts.headers || {}),
+      Authorization: `Bearer ${idToken}`,
+      "Content-Type": opts.body ? "application/json" : (opts.headers || {})["Content-Type"]
     };
-
-    // All requests go to WebSocket server
-    const fullUrl = url.startsWith('http') ? url : `http://34.125.143.141:8000${url}`;
-    
-    console.log('Making request to WebSocket server:', fullUrl);
-    
-    return fetch(fullUrl, { ...options, headers });
-  }
-
-  // Update host status based on WebSocket room state
-  function updateHostStatus() {
-    if (!roomData || !currentUser) return;
-    
-    isHost = roomData.host_id === currentUser.uid;
-    
-    if (isHost) {
-      hostControls.style.display = 'block';
-      hostStatus.style.display = 'block';
-      hostStatus.textContent = 'You are the host of this room.';
-      hostStatus.style.color = '#059669';
-    } else {
-      hostControls.style.display = 'none';
-      hostStatus.style.display = 'block';
-      hostStatus.textContent = 'You are viewing as a participant. Changes will sync in real-time.';
-      hostStatus.style.color = '#6b7280';
+    const res = await fetch(url, { ...opts, headers });
+    // simple 401 auto-refresh
+    if (res.status === 401 && currentUser) {
+      idToken = await currentUser.getIdToken(true);
+      headers.Authorization = `Bearer ${idToken}`;
+      return fetch(url, { ...opts, headers });
     }
+    return res;
   }
 
-  // Apply room state updates
-  function applyState(state) {
-    const song = state.songId || "";
-    const page = state.page || 1;
+  function updateHostUI() {
+    isHost = !!currentUser && roomState.host_id === currentUser.uid;
+    hostControls.style.display = isHost ? 'block' : 'none';
+    hostStatus.style.display = 'block';
+    hostStatus.textContent = isHost ? 'You are the host of this room.' : 'Viewing as a participant. Changes sync in real time.';
+    hostStatus.style.color = isHost ? '#059669' : '#6b7280';
+  }
 
-    vSong.textContent = song || "—";
+  function applyState(s) {
+    const songId = s.current_song ?? s.song_id ?? "";
+    const page   = s.current_page ?? s.page ?? 1;
+    const hostId = s.host_id ?? roomState.host_id;
+
+    roomState = { host_id: hostId, current_song: songId, current_page: page };
+
+    vSong.textContent = songId || "—";
     vPage.textContent = page;
 
-    if (isHost) { 
-      songInput.value = song; 
-      pageInput.value = page; 
-    }
+    if (isHost) { songInput.value = songId; pageInput.value = page; }
+    updateHostUI();
+    loadImage();
+  }
 
-    lastUpdateTime = Date.now();
-    if (!song) {
-      songImage.style.display = 'none';
-      imageHint.textContent = 'Please select a song.';
+async function loadImage() {
+  const songId = roomState.current_song;
+  const page   = roomState.current_page;
+
+  if (!songId) {
+    songImage.style.display = 'none';
+    imageHint.textContent = 'No song selected.';
+    return;
+  }
+
+  const t = Date.now();
+  const url = `${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}/image?t=${t}`;
+
+  imageHint.textContent = 'Loading image...';
+  songImage.style.display = 'none';
+
+  try {
+    const res = await authedFetch(url);
+    if (res.status === 404) {
+      imageHint.textContent = `No image for song "${songId}" page ${page}.`;
       return;
     }
-    loadRoomImage().catch(() => {
-      songImage.style.display = 'none';
-      imageHint.textContent = 'Failed to load image.';
-    });
-  }
-
-  // Load room image with authentication
-  async function loadRoomImage() {
-    if (!idToken || !vSong.textContent || vSong.textContent === "—") {
-      songImage.style.display = 'none';
-      imageHint.textContent = vSong.textContent === "—" ? "No song selected." : "Loading image...";
+    if (!res.ok) {
+      imageHint.textContent = `Image error (${res.status}).`;
       return;
     }
+    const blob = await res.blob();
+    const objUrl = URL.createObjectURL(blob);
+    if (songImage.src && songImage.src.startsWith('blob:')) URL.revokeObjectURL(songImage.src);
+    songImage.src = objUrl;
+    songImage.style.display = 'block';
+    imageHint.textContent = '';
+  } catch (e) {
+    console.error("Image error:", e);
+    imageHint.textContent = 'Error loading image.';
+  }
+}
 
-    try {
-      const cacheBuster = `t=${lastUpdateTime}`;
-      const response = await makeAuthenticatedRequest(`/rooms/${roomId}/image?${cacheBuster}`);
 
-      if (response.ok) {
-        const blob = await response.blob();
-        const imageUrl = URL.createObjectURL(blob);
-        
-        // Clean up previous blob URL
-        if (songImage.src && songImage.src.startsWith('blob:')) {
-          URL.revokeObjectURL(songImage.src);
-        }
-        
-        songImage.src = imageUrl;
-        songImage.style.display = 'block';
-        imageHint.textContent = '';
-      } else {
-        songImage.style.display = 'none';
-        imageHint.textContent = 'No image available.';
-      }
-    } catch (error) {
-      console.error('Error loading image:', error);
-      songImage.style.display = 'none';
-      imageHint.textContent = 'Error loading image.';
-    }
+  // === REST that mirrors /docs ===
+  async function restJoinRoom() {
+    const url = `${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}/join`;
+    await authedFetch(url, { method: "POST" });
   }
 
-  // WebSocket initialization
-  async function initializeWebSocket() {
-    const wsUrl = getWebSocketUrl();
-    if (!wsUrl || isConnecting) return;
-    
-    isConnecting = true;
-    
-    // Properly close existing connection
-    if (socket) {
-      await closeExistingConnection();
-    }
-
-    try {
-      socket = new WebSocket(wsUrl);
-      
-      socket.onopen = () => {
-        connectionStatus.textContent = "Connected";
-        connectionStatus.style.color = "#059669";
-        isConnecting = false;
-        
-        // Clear any reconnect attempts
-        if (reconnectInterval) { 
-          clearInterval(reconnectInterval); 
-          reconnectInterval = null; 
-        }
-
-        // Join the room and get initial state
-        socket.send(JSON.stringify({ 
-          event: 'join',
-          room_id: roomId 
-        }));
-        socket.send(JSON.stringify({ 
-          event: 'get_state',
-          room_id: roomId 
-        }));
-      };
-
-      socket.onmessage = (event) => {
-        let msg; 
-        try { 
-          msg = JSON.parse(event.data); 
-        } catch { 
-          return; 
-        }
-        handleWebSocketMessage(msg);
-      };
-
-      socket.onclose = (event) => {
-        isConnecting = false;
-        connectionStatus.textContent = "Disconnected";
-        connectionStatus.style.color = "#dc3545";
-        
-        if (shouldReconnect && event.code !== 1000) {
-          scheduleReconnect();
-        }
-      };
-
-      socket.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        isConnecting = false;
-        connectionStatus.textContent = "Connection Error";
-        connectionStatus.style.color = "#dc3545";
-      };
-
-    } catch (error) {
-      console.error('Failed to create WebSocket connection:', error);
-      isConnecting = false;
-      scheduleReconnect();
-    }
+  async function restLeaveRoom() {
+    const url = `${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}/leave`;
+    await authedFetch(url, { method: "POST" });
   }
 
-  // Handle WebSocket messages
-  function handleWebSocketMessage(message) {
-    console.log('Received WebSocket message:', message);
-    
-    const eventType = message.event || message.type;
-    
-    switch (eventType) {
-      case 'connection_success':
-        console.log('WebSocket authenticated');
-        break;
-        
-      case 'join_room_success':
-        console.log('Successfully joined room');
-        // Handle initial room state
-        roomData = message.room_state || {};
-        updateHostStatus();
-        if (roomData.current_song) {
-          applyState({
-            songId: roomData.current_song,
-            page: roomData.current_page || 1
-          });
-        }
-        break;
-        
-      case 'state_update':
-      case 'room_state':
-        console.log('Received room state:', message.data);
-        if (message.data) {
-          roomData = message.data;
-          updateHostStatus();
-          applyState({
-            songId: message.data.song_id || message.data.current_song,
-            page: message.data.page || message.data.current_page || 1
-          });
-        }
-        break;
-        
-      case 'song_change':
-      case 'song_updated':
-        console.log('Song changed:', message.data);
-        if (message.data) {
-          roomData = { ...roomData, ...message.data };
-          applyState({
-            songId: message.data.song_id,
-            page: message.data.page || 1
-          });
-        }
-        break;
-        
-      case 'page_change':
-      case 'page_updated':
-        console.log('Page changed:', message.data);
-        if (message.data) {
-          roomData = { ...roomData, ...message.data };
-          applyState({
-            songId: roomData.song_id || roomData.current_song,
-            page: message.data.page
-          });
-        }
-        break;
-        
-      case 'error':
-        console.error('WebSocket error:', message.data);
-        connectionStatus.textContent = `Error: ${message.data?.message || 'Unknown error'}`;
-        connectionStatus.style.color = "#dc3545";
-        break;
-        
-      default:
-        console.warn('Unknown message type:', eventType, message);
-        break;
-    }
+  async function restGetRoom() {
+    const url = `${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}`;
+    const res = await authedFetch(url);
+    if (!res.ok) throw new Error("Failed to get room");
+    return res.json(); // { host_id, current_song, current_page, ... }
   }
 
-  // Connection management functions
-  function closeExistingConnection() {
+  async function restSetSong(songId) {
+  const url = `${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}/song`;
+  const res = await authedFetch(url, { method: "POST", body: JSON.stringify({ song_id: songId }) });
+  console.log("SetSong:", res.status);
+  if (!res.ok) throw new Error(`set_song failed: ${res.status}`);
+}
+
+async function restSetPage(page) {
+  const url = `${BACKEND_HTTP}/rooms/${encodeURIComponent(roomId)}/page`;
+  const res = await authedFetch(url, { method: "POST", body: JSON.stringify({ page }) });
+  console.log("SetPage:", res.status);
+  if (!res.ok) throw new Error(`set_page failed: ${res.status}`);
+}
+
+
+  // === WS ===
+  async function closeWS() {
     return new Promise((resolve) => {
-      if (!socket || socket.readyState === WebSocket.CLOSED) {
-        resolve();
-        return;
-      }
-      
-      const closeTimeout = setTimeout(() => {
-        console.warn('WebSocket close handshake timed out, forcing close');
-        socket = null;
-        resolve();
-      }, 5000);
-      
-      socket.addEventListener('close', () => {
-        clearTimeout(closeTimeout);
-        socket = null;
-        resolve();
-      }, { once: true });
-      
-      if (socket.readyState === WebSocket.CLOSING) {
-        return;
-      }
-      
-      try {
-        socket.close(1000, "Client closing");
-      } catch (error) {
-        console.error('Error closing WebSocket:', error);
-        clearTimeout(closeTimeout);
-        socket = null;
-        resolve();
-      }
+      if (!socket) return resolve();
+      const s = socket; socket = null;
+      s.addEventListener('close', resolve, { once: true });
+      try { s.close(1000, "Client closing"); } catch { resolve(); }
+      setTimeout(resolve, 1200);
     });
   }
 
   function scheduleReconnect() {
-    if (reconnectInterval) return;
-    
-    reconnectInterval = setInterval(() => {
-      if (!shouldReconnect) {
-        clearInterval(reconnectInterval);
-        reconnectInterval = null;
-        return;
-      }
-      
-      if (!isConnecting) {
-        initializeWebSocket();
-      }
+    if (reconnectTimer) return;
+    reconnectTimer = setInterval(() => {
+      if (!isConnecting && idToken) initWS();
     }, 5000);
   }
 
-  // Host control handlers
-  shareBtn.addEventListener("click", async () => {
-    if (!isHost) return alert('Only the host can update the room state.');
-    const song = songInput.value.trim();
-    const page = parseInt(pageInput.value || "1", 10);
+  function initWS() {
+    if (!idToken || isConnecting) return;
+    isConnecting = true;
 
-    try {
-      shareBtn.disabled = true; 
-      shareBtn.textContent = 'Updating...';
-      
-      if (song !== (roomData?.song_id || "")) {
-        await makeAuthenticatedRequest(`/rooms/${roomId}/song`, {
-          method: 'POST', 
-          body: JSON.stringify({ song_id: song })
-        });
+    const sep = BACKEND_WS.includes("?") ? "&" : "?";
+    const wsUrl = `${BACKEND_WS}${sep}token=${encodeURIComponent(idToken)}`;
+
+    closeWS().then(() => {
+      try {
+        socket = new WebSocket(wsUrl);
+        socket.onopen = () => {
+          isConnecting = false;
+          connectionStatus.textContent = "Connected";
+          connectionStatus.style.color = "#059669";
+          if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
+          // Ask WS for live state stream (server may also infer room from prior REST join)
+          socket.send(JSON.stringify({ event: "join", room_id: roomId }));
+          socket.send(JSON.stringify({ event: "get_state", room_id: roomId }));
+        };
+
+        socket.onmessage = (ev) => {
+          let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+          const type = msg.event || msg.type;
+
+          if (type === "join_room_success") {
+            const st = msg.room_state || {};
+            applyState({
+              host_id: st.host_id,
+              current_song: st.current_song,
+              current_page: st.current_page ?? 1
+            });
+            return;
+          }
+          if (type === "room_state" || type === "state_update") {
+            if (msg.data) applyState(msg.data);
+            return;
+          }
+          if (type === "song_updated" || type === "song_change") {
+            if (msg.data) applyState({ ...roomState, song_id: msg.data.song_id, page: msg.data.page ?? roomState.current_page });
+            return;
+          }
+          if (type === "page_updated" || type === "page_change") {
+            if (msg.data) applyState({ ...roomState, page: msg.data.page });
+            return;
+          }
+        };
+
+        socket.onclose = (e) => {
+          isConnecting = false;
+          connectionStatus.textContent = "Disconnected";
+          connectionStatus.style.color = "#dc3545";
+          if (e.code !== 1000) scheduleReconnect();
+        };
+        socket.onerror = () => {
+          isConnecting = false;
+          connectionStatus.textContent = "Connection Error";
+          connectionStatus.style.color = "#dc3545";
+          scheduleReconnect();
+        };
+      } catch (e) {
+        console.error("WS init fail:", e);
+        isConnecting = false;
+        scheduleReconnect();
       }
-      if (page !== (roomData?.page || 1)) {
-        await makeAuthenticatedRequest(`/rooms/${roomId}/page`, {
-          method: 'POST', 
-          body: JSON.stringify({ page })
-        });
-      }
-    } catch (e) {
-      alert('Failed to update room: ' + e.message);
-    } finally {
-      shareBtn.disabled = false; 
-      shareBtn.textContent = 'Share / Update';
-    }
-  });
+    });
+  }
 
-  prevBtn.addEventListener("click", async () => {
-    if (!isHost) return alert('Only the host can change pages.');
-    const currentPage = parseInt(pageInput.value || "1", 10);
-    const newPage = Math.max(1, currentPage - 1);
-    if (newPage === currentPage) return;
-    
+  // === AUTH FLOW ===
+  onAuthStateChanged(getAuth(), async (user) => {
+    currentUser = user;
+
+    if (!user) {
+      showAuthStatus("Please sign in to view and sync the room.", "error");
+      connectionStatus.textContent = "Not connected";
+      connectionStatus.style.color = "#6c757d";
+      hostControls.style.display = 'none';
+      songImage.style.display = 'none';
+      imageHint.textContent = "Please sign in to view the song.";
+      await closeWS();
+      if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
+      idToken = null;
+      return;
+    }
+
     try {
-      prevBtn.disabled = true;
-      await makeAuthenticatedRequest(`/rooms/${roomId}/page`, {
-        method: 'POST', 
-        body: JSON.stringify({ page: newPage })
-      });
+      idToken = await user.getIdToken(true);
+      showAuthStatus(`Signed in as ${user.email}`, "success");
+
+      // 1) Ensure server knows we joined (REST)
+      await restJoinRoom();
+
+      // 2) Prime initial state (REST)
+      const st = await restGetRoom();
+      applyState(st);
+
+      // 3) Subscribe to live updates (WS)
+      initWS();
     } catch (e) {
-      alert('Failed to change page: ' + e.message);
-    } finally { 
-      prevBtn.disabled = false; 
+      console.error(e);
+      showAuthStatus("Authentication/Join failed. Refresh and try again.", "error");
     }
   });
 
-  nextBtn.addEventListener("click", async () => {
-    if (!isHost) return alert('Only the host can change pages.');
-    const currentPage = parseInt(pageInput.value || "1", 10);
-    const newPage = currentPage + 1;
-    
-    try {
-      nextBtn.disabled = true;
-      await makeAuthenticatedRequest(`/rooms/${roomId}/page`, {
-        method: 'POST', 
-        body: JSON.stringify({ page: newPage })
-      });
-    } catch (e) {
-      alert('Failed to change page: ' + e.message);
-    } finally { 
-      nextBtn.disabled = false; 
-    }
-  });
+  // === HOST CONTROLS (REST writes; WS will broadcast back) ===
+shareBtn.addEventListener("click", async () => {
+  if (!isHost) return alert("Only the host can update the room.");
+  const song = songInput.value.trim();
+  const page = Math.max(1, parseInt(pageInput.value || "1", 10));
 
+  try {
+    shareBtn.disabled = true; shareBtn.textContent = "Updating…";
+
+    // Fire mutations (don’t over-optimize; let server decide if it’s a no-op)
+    const ops = [];
+    if (song) ops.push(restSetSong(song));
+    ops.push(restSetPage(page));
+    await Promise.all(ops);
+
+    // Explicitly refresh state in case WS didn't broadcast
+    const st = await restGetRoom();
+    applyState(st);
+
+  } catch (e) {
+    console.error("Update error:", e);
+    alert("Failed to update room: " + (e?.message || e));
+  } finally {
+    shareBtn.disabled = false; shareBtn.textContent = "Share / Update";
+  }
+});
+
+
+prevBtn.addEventListener("click", async () => {
+  if (!isHost) return alert("Only the host can change pages.");
+  const newPage = Math.max(1, (roomState.current_page || 1) - 1);
+  try {
+    prevBtn.disabled = true;
+    await restSetPage(newPage);
+    const st = await restGetRoom();   // force-refresh
+    applyState(st);
+  } finally {
+    prevBtn.disabled = false;
+  }
+});
+
+nextBtn.addEventListener("click", async () => {
+  if (!isHost) return alert("Only the host can change pages.");
+  const newPage = (roomState.current_page || 1) + 1;
+  try {
+    nextBtn.disabled = true;
+    await restSetPage(newPage);
+    const st = await restGetRoom();   // force-refresh
+    applyState(st);
+  } finally {
+    nextBtn.disabled = false;
+  }
+});
+
+  // === DEBUG ===
   refreshBtn.addEventListener("click", async () => {
-    console.log('=== DEBUG INFO ===');
-    console.log('Room ID:', roomId);
-    console.log('Current User:', currentUser);
-    console.log('ID Token exists:', !!idToken);
-    console.log('Room Data:', roomData);
-    console.log('Is Host:', isHost);
-    console.log('WebSocket state:', socket?.readyState);
-    
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({
-        event: 'get_state',
-        room_id: roomId
-      }));
-    } else if (currentUser && idToken) {
-      initializeWebSocket();
-    }
+    console.log("DEBUG:", { roomId, user: currentUser?.uid, hasToken: !!idToken, ws: socket?.readyState, roomState, isHost });
+    try {
+      const st = await restGetRoom();
+      applyState(st);
+    } catch { /* ignore */ }
+    if (!socket || socket.readyState !== WebSocket.OPEN) initWS();
   });
 
-  // Clean up on page unload
+  // === CLEANUP ===
   window.addEventListener("beforeunload", async () => {
-    shouldReconnect = false;
-    
-    if (reconnectInterval) {
-      clearInterval(reconnectInterval);
-      reconnectInterval = null;
-    }
-    
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.close(1000, "Page unloading");
-    }
-    
-    if (songImage.src && songImage.src.startsWith('blob:')) {
-      URL.revokeObjectURL(songImage.src);
-    }
+    try { await restLeaveRoom(); } catch {}
+    await closeWS();
+    if (songImage.src && songImage.src.startsWith('blob:')) URL.revokeObjectURL(songImage.src);
   });
 </script>
 {% endblock %}
