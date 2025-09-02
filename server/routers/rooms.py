@@ -5,6 +5,7 @@ import time
 import json
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
+from pydantic import BaseModel, Field
 
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, Response
 from fastapi.responses import FileResponse
@@ -25,6 +26,42 @@ from scripts.runtime.websocket_server import get_websocket_factory
 
 router = APIRouter()
 logger = _app_logger.getChild("api.rooms")
+
+# Response Models - Document actual output structure
+class RoomResponse(BaseModel):
+    room_id: str = Field(..., description="Unique room identifier", example="0x1a2b3c4d")
+
+class JoinRoomResponse(BaseModel):
+    message: str = Field(..., description="Success message", example="User user123 joined room 0x1a2b3c4d")
+
+class RoomDetailsResponse(BaseModel):
+    room_id: str = Field(..., description="Room identifier", example="0x1a2b3c4d")
+    host_id: str = Field(..., description="Host user ID", example="user123")
+    current_song: Optional[str] = Field(None, description="Current song ID", example="400")
+    current_page: Optional[int] = Field(None, description="Current page number", example=1)
+    participants: List[str] = Field(..., description="List of participant user IDs", example=["user123", "user456"])
+
+# Request Models - Document request body structure
+class SelectSongRequest(BaseModel):
+    song_id: str = Field(..., description="ID of the song to select for the room", example="400")
+
+class UpdatePageRequest(BaseModel):
+    page: int = Field(..., description="Page number to update to", example=2)
+
+class LeaveRoomResponse(BaseModel):
+    message: str = Field(..., description="Leave room result message", example="User user123 left room 0x1a2b3c4d")
+
+class SelectSongResponse(BaseModel):
+    message: str = Field(..., description="Song selection result", example="Song selected successfully")
+    song_id: str = Field(..., description="Selected song ID", example="400")
+    title: str = Field(..., description="Song title", example="Amazing Grace")
+    artist: str = Field(..., description="Song artist", example="John Newton")
+    total_pages: int = Field(..., description="Total pages in song", example=3)
+    current_page: int = Field(..., description="Current page number", example=1)
+    image_etag: str = Field(..., description="ETag for current page image", example="W/\"abc123-1234567890\"")
+
+class UpdatePageResponse(BaseModel):
+    message: str = Field(..., description="Page update result", example="Page update broadcasted.")
 
 # ===================================================================
 # HTTP Endpoints - Now fully asynchronous
@@ -63,7 +100,13 @@ def _blake2b_hexdigest(path: str, digest_bits: int) -> str:
 ## Deterministic image layout: songs_img/{song_id}/page_{page}.webp
 ## We no longer probe candidates; callers build the path directly and handle errors.
 
-@router.post("/")
+@router.post("/", 
+    response_model=RoomResponse,
+    responses={
+        401: {"description": "Authentication required"},
+        500: {"description": "Could not create room"}
+    }
+)
 async def create_room(request: Request, host_data = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
     start_time = time.perf_counter()
     host_id = host_data['uid']
@@ -126,7 +169,14 @@ async def create_room(request: Request, host_data = Depends(get_current_user), s
         logger.error(f"Failed to create room for host {host_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Could not create room.")
 
-@router.post("/{room_id}/join", response_model=None)
+@router.post("/{room_id}/join", 
+    response_model=JoinRoomResponse,
+    responses={
+        404: {"description": "Room not found"},
+        401: {"description": "Authentication required"},
+        500: {"description": "Could not join room"}
+    }
+)
 async def join_room(room_id: str, room_and_user = Depends(get_room_access), session: AsyncSession = Depends(get_db_session)):
     start_time = time.perf_counter()
     room, user_id = room_and_user
@@ -163,7 +213,14 @@ async def join_room(room_id: str, room_and_user = Depends(get_room_access), sess
         logger.error(f"Failed to join room {room_id} for user {user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Could not join room.")
 
-@router.post("/{room_id}/leave", response_model=None)
+@router.post("/{room_id}/leave", 
+    response_model=LeaveRoomResponse,
+    responses={
+        404: {"description": "Room not found"},
+        401: {"description": "Authentication required"},
+        500: {"description": "Could not leave room"}
+    }
+)
 async def leave_room(room_id: str, room_and_user = Depends(get_room_access), session: AsyncSession = Depends(get_db_session)):
     room, user_id = room_and_user
     try:
@@ -241,7 +298,12 @@ async def leave_room(room_id: str, room_and_user = Depends(get_room_access), ses
         logger.error(f"Failed to leave room {room_id} for user {user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Could not leave room.")
 
-@router.get("/{room_id}", response_model=None)
+@router.get("/{room_id}", 
+    response_model=RoomDetailsResponse,
+    responses={
+        404: {"description": "Room not found"}
+    }
+)
 async def get_room_details(room_id: str, session: AsyncSession = Depends(get_db_session)):
     room = await get_room_by_id_from_db(session, room_id)
     if not room:
@@ -260,17 +322,23 @@ async def get_room_details(room_id: str, session: AsyncSession = Depends(get_db_
         "participants": participant_list
     }
 
-@router.post("/{room_id}/song", response_model=None)
+@router.post("/{room_id}/song", 
+    response_model=SelectSongResponse,
+    responses={
+        404: {"description": "Room or song not found"},
+        401: {"description": "Authentication required (host only)"},
+        500: {"description": "Could not select song"}
+    }
+)
 async def select_song_for_room(
     room_id: str,
-    request: Request,
+    request: SelectSongRequest,
     room_and_user = Depends(get_host_access),
     session: AsyncSession = Depends(get_db_session),
     songs_pdf_dir: str = Depends(get_songs_pdf_dir),
     songs_img_dir: str = Depends(get_songs_img_dir)
 ):
-    body = await request.json()
-    song_id = body.get("song_id")
+    song_id = request.song_id
     room, host_id = room_and_user
 
     try:
@@ -364,10 +432,17 @@ async def select_song_for_room(
         logger.error(f"Failed to select song {song_id} for room {room_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/{room_id}/page", response_model=None)
-async def update_room_page(room_id: str, request: Request, host_data = Depends(get_host_access), session: AsyncSession = Depends(get_db_session), songs_img_dir: str = Depends(get_songs_img_dir)):
-    body = await request.json()
-    page = body.get("page")
+@router.post("/{room_id}/page", 
+    response_model=UpdatePageResponse,
+    responses={
+        404: {"description": "Room not found"},
+        401: {"description": "Authentication required (host only)"},
+        400: {"description": "Invalid page number"},
+        500: {"description": "Could not update page"}
+    }
+)
+async def update_page_for_room(room_id: str, request: UpdatePageRequest, host_data = Depends(get_host_access), session: AsyncSession = Depends(get_db_session), songs_img_dir: str = Depends(get_songs_img_dir)):
+    page = request.page
     room, host_id = host_data
     
     try:
@@ -456,7 +531,13 @@ async def update_room_page(room_id: str, request: Request, host_data = Depends(g
         logger.error(f"Failed to update page for room {room_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Could not update page.")
 
-@router.get("/{room_id}/pdf")
+@router.get("/{room_id}/pdf",
+    responses={
+        404: {"description": "Room, song, or PDF not found"},
+        401: {"description": "Authentication required"},
+        200: {"description": "PDF file", "content": {"application/pdf": {}}}
+    }
+)
 async def download_room_pdf(room_id: str, request: Request, room_and_user = Depends(get_room_access), session: AsyncSession = Depends(get_db_session)):
     try:
         room, user_id = room_and_user
@@ -491,14 +572,15 @@ async def download_room_pdf(room_id: str, request: Request, room_and_user = Depe
         logger.error(f"Failed to download PDF for room {room_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Could not download PDF.")
 
-@router.get("/{room_id}/image")
-async def get_room_current_image(
-    room_id: str,
-    request: Request,
-    room_and_user = Depends(get_room_access),
-    session: AsyncSession = Depends(get_db_session),
-    songs_img_dir: str = Depends(get_songs_img_dir),
-):
+@router.get("/{room_id}/image",
+    responses={
+        404: {"description": "Room, song, or image not found"},
+        401: {"description": "Authentication required"},
+        304: {"description": "Image not modified (ETag match)"},
+        200: {"description": "Image data", "content": {"image/png": {}}}
+    }
+)
+async def get_room_image(room_id: str, request: Request, room_and_user = Depends(get_room_access), session: AsyncSession = Depends(get_db_session), songs_img_dir: str = Depends(get_songs_img_dir)):
     """Serve the current room image with strong ETag caching.
     Enforces auth and room access. Supports If-None-Match -> 304.
     """
