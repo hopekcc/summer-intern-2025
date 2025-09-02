@@ -121,7 +121,7 @@ class PlaylistSong(SQLModel, table=True):
     song: Song = Relationship(back_populates="playlist_songs")
 
 # Single async engine configured by env (PostgreSQL-only)
-DATABASE_URL = get_database_url()
+# DATABASE_URL will be set when get_engine() is called
 
 # Determine environment (dev/prod-style defaults)
 IS_PROD = _parse_bool(os.getenv("PROD", "0"), default=False)
@@ -170,14 +170,28 @@ logger.info(
     },
 )
 
-engine = create_async_engine(DATABASE_URL, **engine_kwargs)
+# Engine will be created lazily when needed
+engine = None
+AsyncSessionLocal = None
 
-# Single session factory
-AsyncSessionLocal = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False, autoflush=False, autocommit=False)
+def get_engine():
+    """Get or create the database engine"""
+    global engine, AsyncSessionLocal
+    if engine is None:
+        DATABASE_URL = get_database_url()
+        engine = create_async_engine(DATABASE_URL, **engine_kwargs)
+        AsyncSessionLocal = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False, autoflush=False, autocommit=False)
+    return engine
+
+def get_session_factory():
+    """Get the session factory, ensuring engine is initialized"""
+    get_engine()  # This will initialize both engine and AsyncSessionLocal
+    return AsyncSessionLocal
 
 # Database creation functions
 async def create_db_and_tables_async():
     """Create database and all tables (asynchronous)"""
+    engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
         await conn.commit()
@@ -185,6 +199,7 @@ async def create_db_and_tables_async():
 # Session management
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency: yield a single async session."""
+    get_engine()  # Ensure engine is initialized
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -320,78 +335,95 @@ async def search_songs_substring(session: AsyncSession, query: str, limit: int =
 
 
 async def search_songs_similarity(session: AsyncSession, query: str, limit: int = 10) -> List[dict]:
-    """Trigram similarity search using pg_trgm. Score = similarity * 100.
-    Uses index-friendly operators if available.
-    """
-    q = (query or "").strip()
-    if not q:
-        return []
-    sql = text(
-        """
+    """Similarity search using pg_trgm extension."""
+    try:
+        # Try pg_trgm similarity search first
+        sql = """
         SELECT id, title, artist, page_count,
-               GREATEST(similarity(title, :q), similarity(artist, :q)) AS score
-        FROM songs
-        WHERE title % :q OR artist % :q
-        ORDER BY score DESC, title ASC
+               GREATEST(
+                   similarity(title, :query),
+                   similarity(COALESCE(artist, ''), :query)
+               ) as score
+        FROM songs 
+        WHERE title % :query OR COALESCE(artist, '') % :query
+        ORDER BY score DESC
         LIMIT :limit
         """
-    )
-    try:
-        res = await session.execute(sql, {"q": q, "limit": limit})
-        rows = res.mappings().all()
+        result = await session.execute(text(sql), {"query": query, "limit": limit})
+        rows = result.fetchall()
+        
+        if rows:
+            return [
+                {
+                    "song_id": row.id,
+                    "title": row.title,
+                    "artist": row.artist,
+                    "page_count": row.page_count,
+                    "score": round(row.score * 100, 1),
+                    "score_type": "similarity",
+                }
+                for row in rows
+            ]
     except Exception as e:
-        logger.warning("similarity search failed; returning empty", extra={"error": str(e)})
-        return []
-    out = []
-    for r in rows:
-        score = float(r["score"] or 0.0) * 100.0
-        out.append({
-            "song_id": r["id"],
-            "title": r["title"],
-            "artist": r["artist"],
-            "page_count": r["page_count"],
-            "score": round(score, 1),
-            "score_type": "similarity",
-        })
-    return out
+        logger.warning(f"pg_trgm similarity search failed: {e}")
+    
+    # Fallback to basic search
+    songs = await search_songs(session, query, limit)
+    return [
+        {
+            "song_id": song.id,
+            "title": song.title,
+            "artist": song.artist,
+            "page_count": song.page_count,
+            "score": 80.0,
+            "score_type": "similarity_fallback",
+        }
+        for song in songs
+    ]
 
 async def search_songs_text(session: AsyncSession, query: str, limit: int = 10) -> List[dict]:
-    """Full-text search on title+artist with ts_rank, normalized to 0-100 within results."""
-    q = (query or "").strip()
-    if not q:
-        return []
-    sql = text(
-        """
+    """Full-text search using tsvector column."""
+    try:
+        # Try tsvector full-text search first
+        sql = """
         SELECT id, title, artist, page_count,
-               ts_rank(ts, plainto_tsquery('simple', :q)) AS rank
-        FROM songs
-        WHERE ts @@ plainto_tsquery('simple', :q)
-        ORDER BY rank DESC, title ASC
+               ts_rank(ts, plainto_tsquery('simple', :query)) as score
+        FROM songs 
+        WHERE ts @@ plainto_tsquery('simple', :query)
+        ORDER BY score DESC
         LIMIT :limit
         """
-    )
-    try:
-        res = await session.execute(sql, {"q": q, "limit": limit})
-        rows = res.mappings().all()
+        result = await session.execute(text(sql), {"query": query, "limit": limit})
+        rows = result.fetchall()
+        
+        if rows:
+            return [
+                {
+                    "song_id": row.id,
+                    "title": row.title,
+                    "artist": row.artist,
+                    "page_count": row.page_count,
+                    "score": round(row.score * 100, 1),
+                    "score_type": "text",
+                }
+                for row in rows
+            ]
     except Exception as e:
-        logger.warning("fts search failed; returning empty", extra={"error": str(e)})
-        return []
-
-    ranks = [float(r["rank"] or 0.0) for r in rows]
-    max_rank = max(ranks) if ranks else 0.0
-    out = []
-    for r in rows:
-        rank = float(r["rank"] or 0.0)
-        score = (rank / max_rank * 100.0) if max_rank > 0 else 0.0
-        out.append({
-            "song_id": r["id"],
-            "title": r["title"],
-            "artist": r["artist"],
-            "page_count": r["page_count"],
-            "score": round(score, 1),
-            "score_type": "text",
-        })
-    return out
+        logger.warning(f"tsvector full-text search failed: {e}")
+    
+    # Fallback to basic search
+    songs = await search_songs(session, query, limit)
+    return [
+        {
+            "song_id": song.id,
+            "title": song.title,
+            "artist": song.artist,
+            "page_count": song.page_count,
+            "score": 75.0,
+            "score_type": "text_fallback",
+        }
+        for song in songs
+    ]
 
 
 # Helper functions from database_helpers.py

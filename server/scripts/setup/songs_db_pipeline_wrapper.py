@@ -150,14 +150,19 @@ async def run_database_population(args) -> bool:
             pop_args.append("--check-missing")
         if args.verify_assets:
             pop_args.append("--verify-assets")
-        if args.setup_search:
-            pop_args.append("--setup-search")
+        
+        # Enable search setup by default unless explicitly skipped
         if args.skip_search:
             pop_args.append("--skip-search")
+        else:
+            pop_args.append("--setup-search")  # Default behavior
+            
         if args.blocking_indexes:
             pop_args.append("--blocking-indexes")
         if args.fts_mode:
             pop_args.extend(["--fts-mode", args.fts_mode])
+        else:
+            pop_args.extend(["--fts-mode", "column"])  # Default to column mode
         
         result = await populate_main(pop_args)
         
@@ -329,7 +334,7 @@ Examples:
     
     # Search infrastructure options
     parser.add_argument("--setup-search", action="store_true", 
-                       help="Set up search infrastructure (pg_trgm, indexes)")
+                       help="Set up search infrastructure (pg_trgm, indexes) - enabled by default")
     parser.add_argument("--skip-search", action="store_true", 
                        help="Skip search infrastructure setup")
     parser.add_argument("--blocking-indexes", action="store_true", 
