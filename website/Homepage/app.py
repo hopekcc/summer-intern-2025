@@ -98,10 +98,19 @@ def session_login():
 
 @app.route("/logout")
 def logout():
-    """Clear the session cookie and redirect to home page."""
-    resp = make_response(redirect(url_for("home")))
-    resp.delete_cookie("session")
+    # (optional) revoke tokens so old ID tokens can’t recreate a session
+    claims = current_user()
+    if claims and "uid" in claims:
+        try:
+            admin_auth.revoke_refresh_tokens(claims["uid"])
+        except Exception:
+            pass
+
+    resp = make_response(redirect(url_for("home", guest=1)))  # force Guest view
+    resp.delete_cookie("session", path="/")
+    resp.set_cookie("session", "", expires=0, max_age=0, path="/")
     return resp
+
 
 # -----------------------------------------------------------------------------
 # PDF/Preview config
@@ -117,7 +126,32 @@ BACKEND_BASE = os.environ.get("BACKEND_BASE", "http://34.125.143.141:8000")
 # -----------------------------------------------------------------------------
 @app.route("/")
 def home():
-    return render_template("home.html", username="Mentor", insert_text="Welcome to our demo!!!")
+    u = current_user()  # if cookie is valid, this is a dict; else None
+
+    # If user exists, ALWAYS show their name/email and ignore any guest=1 param.
+    if u:
+        display_name = u.get("name") or u.get("email")
+        username = display_name or "Guest"
+    else:
+        # No user => guest view
+        username = "Guest"
+
+    resp = make_response(render_template(
+        "home.html",
+        username=username,
+        insert_text="Welcome to the HopeJam final demo!"
+    ))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
+
+@app.after_request
+def no_cache(resp):
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 @app.route("/preview", methods=["GET", "POST"])
 def preview():
@@ -125,23 +159,7 @@ def preview():
         chordpro_text = request.form.get("chordpro_text")
         return render_template("preview.html", content=chordpro_text)
     return render_template("preview.html", content=None)
-
-@app.route("/view/<path:filename>")
-def view_pdf(filename):
-    filename = secure_filename(filename)
-    file_path = os.path.join(app.config["PDF_FOLDER"], filename)
-    if not os.path.exists(file_path):
-        abort(404)
-    return render_template("view.html", filename=filename)
-
-@app.route("/pdfs/<path:filename>")
-def serve_pdf(filename):
-    return send_from_directory(app.config["PDF_FOLDER"], filename)
-
-@app.route("/songs")
-def song_list():
-    return render_template("songs.html")
-
+'''
 # -----------------------------------------------------------------------------
 # Playlist page
 # -----------------------------------------------------------------------------
@@ -203,6 +221,7 @@ def get_playlists():
         
     except Exception as e:
         return jsonify({'error': 'Failed to fetch playlists'}), 500
+'''
 
 @app.route("/dashboard")
 def dashboard():

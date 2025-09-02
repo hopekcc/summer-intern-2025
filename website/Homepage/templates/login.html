@@ -88,114 +88,47 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
   import {
-    getAuth,
-    signInWithEmailAndPassword,
-    onAuthStateChanged,
-    GoogleAuthProvider,
-    signInWithPopup
+    getAuth, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup
   } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
 
-  // Inline Firebase config
-  const firebaseConfig = {
+  const app = initializeApp({ /* your config (unchanged) */ 
     apiKey: "AIzaSyAQ3r-8kqsWOgBkWRKs-bApV33oeu-AICs",
     authDomain: "hopekcc-2024-summer-intern-api.firebaseapp.com",
     projectId: "hopekcc-2024-summer-intern-api",
     storageBucket: "hopekcc-2024-summer-intern-api.appspot.com",
     messagingSenderId: "172531116306",
     appId: "1:172531116306:web:d898ae28b5f79a425babcb"
-  };
-
-  const app = initializeApp(firebaseConfig);
+  });
   const auth = getAuth(app);
 
-  console.log('Firebase initialized for login page');
-
-  document.addEventListener("DOMContentLoaded", () => {
-    const form = document.getElementById("login-form");
-    const errorMsg = document.getElementById("error-msg");
-
-    // If already logged in, redirect immediately (unless debug/force mode)
-    onAuthStateChanged(auth, user => {
-      if (user) {
-        // Check if this is a debug/force visit
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('debug') === '1' || urlParams.get('force') === '1') {
-          console.log('Debug/force mode - staying on login page');
-          return;
-        }
-        
-        console.log('User already logged in, redirecting...');
-        window.location.href = "/";
-      }
+  async function exchangeSessionCookie(idToken) {
+    const r = await fetch("/sessionLogin", {
+      method: "POST",
+      credentials: "include",                 // <-- IMPORTANT so Set-Cookie is stored
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken })
     });
+    if (!r.ok) throw new Error(`sessionLogin failed: ${r.status}`);
+  }
 
-    // Email/Password login
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      errorMsg.textContent = "";
+  // EMAIL/PASSWORD
+  document.getElementById("login-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    const idToken = await cred.user.getIdToken(true);
+    await exchangeSessionCookie(idToken);
+    window.location.href = "/";               // redirect AFTER cookie is set
+  });
 
-      const email = document.getElementById("email").value;
-      const password = document.getElementById("password").value;
-
-      console.log('Attempting email/password login...');
-
-      try {
-        const cred = await signInWithEmailAndPassword(auth, email, password);
-        console.log('Firebase login successful');
-        
-        // Send ID Token to backend to exchange for session
-        const idToken = await cred.user.getIdToken();
-        console.log('Got ID token, sending to backend...');
-        
-        const r = await fetch("/sessionLogin", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idToken })
-        });
-        
-        if (!r.ok) {
-          throw new Error(`Session login failed: ${r.status}`);
-        }
-        
-        console.log('Session login successful, redirecting...');
-        window.location.href = "/"; // Redirect after login
-      } catch (err) {
-        console.error('Login error:', err);
-        errorMsg.textContent = err.message;
-      }
-    });
-
-    // Google login
-    document.getElementById("google-login").addEventListener("click", async () => {
-      errorMsg.textContent = "";
-      console.log('Attempting Google login...');
-      
-      try {
-        const provider = new GoogleAuthProvider();
-        const result = await signInWithPopup(auth, provider);
-        console.log('Google login successful');
-        
-        const idToken = await result.user.getIdToken();
-        console.log('Got ID token, sending to backend...');
-
-        // Send ID Token to Flask backend to exchange for session cookie
-        const r = await fetch("/sessionLogin", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idToken })
-        });
-        
-        if (!r.ok) {
-          throw new Error(`Session login failed: ${r.status}`);
-        }
-        
-        console.log('Session login successful, redirecting...');
-        window.location.href = "/"; // Redirect after login
-      } catch (err) {
-        console.error('Google login error:', err);
-        errorMsg.textContent = err.message;
-      }
-    });
+  // GOOGLE
+  document.getElementById("google-login")?.addEventListener("click", async () => {
+    const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(auth, provider);
+    const idToken = await result.user.getIdToken(true);
+    await exchangeSessionCookie(idToken);
+    window.location.href = "/";               // redirect AFTER cookie is set
   });
 </script>
 {% endblock %}
