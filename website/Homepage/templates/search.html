@@ -1,0 +1,94 @@
+
+
+{% extends "base.html" %}
+{% block title %}Search Songs{% endblock %}
+
+{% block content %}
+<div class="song-container" style="padding: 2rem;">
+  <h2>🔍 Search Songs</h2>
+  <input type="text" id="search-input" placeholder="Type a keyword..." style="padding: 0.5rem; width: 60%;">
+  <div id="search-results" style="margin-top: 1rem;"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+
+  const escapeHtml = (s) =>
+    s.replaceAll("&","&amp;")
+     .replaceAll("<","&lt;")
+     .replaceAll(">","&gt;")
+     .replaceAll('"',"&quot;")
+     .replaceAll("'","&#39;");
+
+  const pickArtist = (song) => {
+    const candidates = [
+      song.artist,
+      song.singer,
+      song.author,
+      Array.isArray(song.artists) ? song.artists.join(", ") : null,
+    ];
+    return (candidates.find(Boolean) || "Unknown").toString();
+  };
+
+  const pickId = (song) => song.id ?? song.song_id ?? song.uuid ?? "";
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const input = document.getElementById("search-input");
+    const results = document.getElementById("search-results");
+    if (!input || !results) return;
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        alert("Please log in first.");
+        window.location.href = "/login";
+        return;
+      }
+
+      const token = await user.getIdToken();
+
+      input.addEventListener("input", async () => {
+        const query = input.value.trim();
+        if (!query) { results.innerHTML = ""; return; }
+
+        try {
+          const res = await fetch(`http://34.125.143.141:8000/songs/search/substring?q=${encodeURIComponent(query)}&limit=100`, {
+            headers: { Authorization: "Bearer " + token }
+          });
+          if (!res.ok) { results.innerHTML = "<p style='color:red;'>Failed to fetch results</p>"; return; }
+
+          const songs = await res.json();
+          if (!Array.isArray(songs) || songs.length === 0) {
+            results.innerHTML = "<p>No matching songs found.</p>";
+            return;
+          }
+
+          const count = songs.length;
+          results.innerHTML = `
+            <p class="result-count">Found ${count} ${count === 1 ? "song" : "songs"}.</p>
+            <ul class="song-list" style="list-style:none;padding-left:0;">
+              ${songs.map(song => {
+                const id = pickId(song);
+                const title = escapeHtml(String(song.title ?? song.name ?? song.song_title ?? "Untitled"));
+                const artist = escapeHtml(pickArtist(song));
+                return `
+                  <li style="margin: 0.25rem 0;">
+                    <a href="/songs/${id}/view" style="text-decoration:none;">
+                      ${title} <span aria-hidden="true">–</span> <span class="artist" style="opacity:0.8;">${artist}</span>
+                    </a>
+                  </li>`;
+              }).join("")}
+            </ul>
+          `;
+        } catch (e) {
+          console.error(e);
+          results.innerHTML = "<p style='color:red;'>Error occurred while fetching.</p>";
+        }
+      });
+    });
+  });
+</script>
+
+{% endblock %}

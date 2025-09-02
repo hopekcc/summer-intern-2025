@@ -269,22 +269,8 @@ def pdf_stream(song_id):
 # -----------------------------------------------------------------------------
 # Search Routes
 # -----------------------------------------------------------------------------
-@app.route("/search_artist")
-def search_artist():
-    artists = ["Andy", "Brandon", "Caleb", "Drake",
-               "Edward", "Fred", "Grayson", "Humza",
-               "Ismael", "John", "Kush", "Lawson",
-               "Michelle", "Nick", "Owen", "Peter",
-               "John", "Ryan", "Sophie", "Trevor",
-               "Uno", "Vivian", "William", "Xanthos",
-               "Yerson", "Zachery"]
-
-    letter = request.args.get("letter", "A").upper()
-    filtered = [artist for artist in artists if artist.upper().startswith(letter)]
-    return render_template("search_artist.html", letter=letter, artists=filtered)
-
 @app.route("/search_title", methods=["GET", "POST"])
-def search_title():
+def search():
     all_songs = [
         "Finger Family Song", "Jingle Bells", "London Bridge is Falling Down",
         "Old McDonald Had A Farm", "Thomas and Friends Theme Song",
@@ -300,7 +286,7 @@ def search_title():
                 filename = make_slug(song)
                 pdf_url = url_for("view_pdf", filename=filename)
                 results.append({"title": song, "pdf_url": pdf_url})
-    return render_template("search_title.html", keyword=keyword, results=results)
+    return render_template("search.html", keyword=keyword, results=results)
 
 # -----------------------------------------------------------------------------
 # Room Routes
