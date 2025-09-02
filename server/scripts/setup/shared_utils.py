@@ -26,19 +26,23 @@ from dotenv import load_dotenv
 
 def setup_environment() -> bool:
     """Load environment variables from multiple possible locations"""
-    env_paths = [
-        SERVER_DIR / ".env",
-        Path.cwd() / ".env",
-        Path(".env")
-    ]
-    
+    # Always prioritize server/.env regardless of current working directory
+    server_env = SERVER_DIR / ".env"
     env_loaded = False
-    for env_path in env_paths:
-        if env_path.exists():
-            load_dotenv(env_path)
-            print(f"Loaded environment from: {env_path}")
-            env_loaded = True
-            break
+    
+    if server_env.exists():
+        load_dotenv(server_env, override=True)
+        print(f"Loaded environment from: {server_env}")
+        env_loaded = True
+    else:
+        # Fallback to other locations
+        fallback_paths = [Path.cwd() / ".env", Path(".env")]
+        for env_path in fallback_paths:
+            if env_path.exists():
+                load_dotenv(env_path, override=True)
+                print(f"Loaded environment from: {env_path}")
+                env_loaded = True
+                break
     
     if not env_loaded:
         print("No .env file found. Using system environment variables only.")
@@ -256,7 +260,7 @@ def parse_chordpro_metadata(cho_path: str, default_title: str) -> Dict[str, Opti
         except (UnicodeDecodeError, UnicodeError):
             continue  # Try next encoding
         except Exception as e:
-            print(f"⚠️  Warning: Error reading {cho_path} with {encoding}: {e}")
+            print(f"Warning: Error reading {cho_path} with {encoding}: {e}")
             break  # Other errors, stop trying
     
     if not data["title"]:

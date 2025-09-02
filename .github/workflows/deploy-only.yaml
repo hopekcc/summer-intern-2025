@@ -29,14 +29,13 @@ jobs:
           echo "Deploying to ${{ github.event.inputs.environment || 'production' }}"
 
           cd ..
-          cd server/
-          cd summer-intern-2025/
-          cd server/scripts/setup/
-          tmux new-session -d -s server_pull || true
+          # Start a detached tmux session in the server/ directory
+          tmux new-session -d -s server_pull -c /home/server/summer-intern-2025/server || true
+
+          # Pull latest code
           tmux send-keys -t server_pull 'git pull origin main' C-m
-          tmux send-keys -t server_pull 'cd server/scripts/setup/' C-m
-          tmux send-keys -t server_pull 'cd ..' C-m
-          tmux send-keys -t server_pull 'cd ..' C-m
+
+          # Activate venv and install dependencies
           tmux send-keys -t server_pull 'source .venvServer/bin/activate' C-m
           tmux send-keys -t server_pull 'pip install -r requirements.txt' C-m
 

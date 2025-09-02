@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
 import com.example.chordproapp.components.BottomNavigationBar
+import com.example.chordproapp.data.repository.PlaylistRepository
 import com.example.chordproapp.navigation.AppNavigation
 import com.example.chordproapp.viewmodels.PlaylistViewModel
 import com.example.chordproapp.ui.theme.ChordproappTheme
@@ -37,6 +38,10 @@ class MainActivity : ComponentActivity() {
                 var idToken by remember { mutableStateOf<String?>(null) }
                 val navController = rememberNavController()
 
+                val playlistRepository = remember { PlaylistRepository {idToken} }
+                // Create shared ViewModel for sync-related screens
+                val playlistViewModel = remember { PlaylistViewModel(playlistRepository) }
+
                 // Check if user is already logged in
                 LaunchedEffect(Unit) {
                     val currentUser = auth.currentUser
@@ -56,11 +61,9 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // Create shared ViewModel for sync-related screens
-                val playlistViewModel = remember { PlaylistViewModel() }
-
                 // Create idTokenProvider function
                 val idTokenProvider: () -> String? = { idToken }
+
 
                 if (isLoggedIn) {
                     Scaffold(
