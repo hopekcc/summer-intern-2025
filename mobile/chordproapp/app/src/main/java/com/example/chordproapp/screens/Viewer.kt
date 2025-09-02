@@ -1,9 +1,6 @@
 package com.example.chordproapp.screens
 
-import ViewerViewModel
 import android.graphics.Bitmap
-import android.graphics.pdf.PdfRenderer
-import android.os.ParcelFileDescriptor
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -25,45 +22,44 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.chordproapp.data.repository.SongRepository
-import kotlinx.coroutines.launch
-import java.io.File
-import java.io.FileOutputStream
+import com.example.chordproapp.viewmodels.ViewerViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Viewer(
     songId: Int,
+    totalPages: Int,
     onClose: () -> Unit,
-    idTokenProvider: () -> String?,
+    idTokenProvider: () -> String?
 ) {
     val context = LocalContext.current
-    val viewModel: ViewerViewModel = viewModel {
-        ViewerViewModel(
-            repository = SongRepository(idTokenProvider),
-            appContext = context
-        )
-    }
-    val pdfPages by viewModel.pdfPages.collectAsState()
+    val viewModel: ViewerViewModel = viewModel(
+        factory = object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                @Suppress("UNCHECKED_CAST")
+                return ViewerViewModel(
+                    repository = SongRepository(
+                        tokenProvider = idTokenProvider,
+                        appContext = context
+                    ),
+                    appContext = context
+                ) as T
+            }
+        }
+    )
+
+    val pageImages by viewModel.pageImages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
-    val currentPage by viewModel.currentPage.collectAsState()
 
-    val pagerState = rememberPagerState(pageCount = { pdfPages.size })
-    val coroutineScope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(pageCount = { pageImages.size.coerceAtLeast(1) })
 
-    // Load PDF when the composable is first created
-    LaunchedEffect(songId) {
-        viewModel.loadPdf(songId)
-        print(songId)
-    }
-
-    // Update current page when pager state changes
-    LaunchedEffect(pagerState.currentPage) {
-        if (pdfPages.isNotEmpty()) {
-            viewModel.updateCurrentPage(pagerState.currentPage)
-        }
+    LaunchedEffect(songId, totalPages) {
+        viewModel.loadPages(songId, totalPages)
     }
 
     Box(
@@ -72,59 +68,27 @@ fun Viewer(
             .background(Color.Black)
     ) {
         when {
-            isLoading -> {
-                LoadingState()
+            isLoading -> LoadingState()
+            error != null -> ErrorState(error!!) { viewModel.loadPages(songId, totalPages) }
+            pageImages.isNotEmpty() -> HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                ZoomableImage(bitmap = pageImages[page], modifier = Modifier.fillMaxSize())
             }
-
-            error != null -> {
-                ErrorState(
-                    error = error!!,
-                    onRetry = { viewModel.loadPdf(songId) }
+            else -> Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "No pages available",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyLarge
                 )
-            }
-
-            pdfPages.isNotEmpty() -> {
-                // PDF content
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize()
-                ) { page ->
-                    ZoomableImage(
-                        bitmap = pdfPages[page],
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
-                // Page indicator
-                if (pdfPages.size > 1) {
-                    PageIndicator(
-                        currentPage = currentPage,
-                        totalPages = pdfPages.size,
-                        modifier = Modifier.align(Alignment.BottomCenter)
-                    )
-                }
-            }
-
-            else -> {
-                // Empty state
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "No PDF content available",
-                        color = Color.White,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                }
             }
         }
 
-        // Close button
-        CloseButton(
-            onClick = onClose,
-            modifier = Modifier.align(Alignment.TopEnd)
-        )
+        CloseButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd))
     }
 }
 
@@ -134,16 +98,14 @@ private fun LoadingState() {
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(48.dp)
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                "Loading PDF...",
+                "Loading pages...",
                 color = Color.White,
                 style = MaterialTheme.typography.bodyLarge
             )
@@ -152,10 +114,7 @@ private fun LoadingState() {
 }
 
 @Composable
-private fun ErrorState(
-    error: String,
-    onRetry: () -> Unit
-) {
+private fun ErrorState(error: String, onRetry: () -> Unit) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
@@ -165,7 +124,7 @@ private fun ErrorState(
             modifier = Modifier.padding(32.dp)
         ) {
             Text(
-                "Error loading PDF",
+                "Error loading pages",
                 color = Color.White,
                 style = MaterialTheme.typography.headlineSmall
             )
@@ -189,33 +148,7 @@ private fun ErrorState(
 }
 
 @Composable
-private fun PageIndicator(
-    currentPage: Int,
-    totalPages: Int,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier.padding(16.dp)
-    ) {
-        Surface(
-            color = Color.Black.copy(alpha = 0.7f),
-            shape = CircleShape
-        ) {
-            Text(
-                "${currentPage + 1} / $totalPages",
-                color = Color.White,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun CloseButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
+private fun CloseButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     IconButton(
         onClick = onClick,
         modifier = modifier
@@ -227,22 +160,17 @@ private fun CloseButton(
         Icon(
             imageVector = Icons.Default.Close,
             contentDescription = "Close",
-            tint = Color.White,
-            modifier = Modifier.size(24.dp)
+            tint = Color.White
         )
     }
 }
 
 @Composable
-private fun ZoomableImage(
-    bitmap: Bitmap,
-    modifier: Modifier = Modifier
-) {
-    var scale by remember { mutableFloatStateOf(1f) }
-    var offsetX by remember { mutableFloatStateOf(0f) }
-    var offsetY by remember { mutableFloatStateOf(0f) }
+private fun ZoomableImage(bitmap: Bitmap, modifier: Modifier = Modifier) {
+    var scale by remember { mutableStateOf(1f) }
+    var offsetX by remember { mutableStateOf(0f) }
+    var offsetY by remember { mutableStateOf(0f) }
 
-    // Reset zoom when bitmap changes
     LaunchedEffect(bitmap) {
         scale = 1f
         offsetX = 0f
@@ -251,7 +179,7 @@ private fun ZoomableImage(
 
     Image(
         bitmap = bitmap.asImageBitmap(),
-        contentDescription = "PDF Page",
+        contentDescription = "Page Image",
         contentScale = ContentScale.Fit,
         modifier = modifier
             .graphicsLayer(
@@ -261,31 +189,21 @@ private fun ZoomableImage(
                 translationY = offsetY
             )
             .pointerInput(Unit) {
-                detectTransformGestures(
-                    onGesture = { _, pan, zoom, _ ->
-                        val newScale = (scale * zoom).coerceIn(0.5f, 5f)
-
-                        if (newScale != scale) {
-                            scale = newScale
-
-                            // Adjust offsets to keep zoom centered
-                            val maxX = (size.width * (scale - 1)) / 2
-                            val maxY = (size.height * (scale - 1)) / 2
-
-                            offsetX = (offsetX + pan.x).coerceIn(-maxX, maxX)
-                            offsetY = (offsetY + pan.y).coerceIn(-maxY, maxY)
-                        } else {
-                            // Only pan if we're zoomed in
-                            if (scale > 1f) {
-                                val maxX = (size.width * (scale - 1)) / 2
-                                val maxY = (size.height * (scale - 1)) / 2
-
-                                offsetX = (offsetX + pan.x).coerceIn(-maxX, maxX)
-                                offsetY = (offsetY + pan.y).coerceIn(-maxY, maxY)
-                            }
-                        }
+                detectTransformGestures { _, pan, zoom, _ ->
+                    val newScale = (scale * zoom).coerceIn(0.5f, 5f)
+                    if (newScale != scale) {
+                        scale = newScale
+                        val maxX = (size.width * (scale - 1)) / 2
+                        val maxY = (size.height * (scale - 1)) / 2
+                        offsetX = (offsetX + pan.x).coerceIn(-maxX, maxX)
+                        offsetY = (offsetY + pan.y).coerceIn(-maxY, maxY)
+                    } else if (scale > 1f) {
+                        val maxX = (size.width * (scale - 1)) / 2
+                        val maxY = (size.height * (scale - 1)) / 2
+                        offsetX = (offsetX + pan.x).coerceIn(-maxX, maxX)
+                        offsetY = (offsetY + pan.y).coerceIn(-maxY, maxY)
                     }
-                )
+                }
             }
     )
 }

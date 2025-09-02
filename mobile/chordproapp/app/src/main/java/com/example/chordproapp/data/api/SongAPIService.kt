@@ -21,6 +21,14 @@ interface ApiService {
     @GET("songs/{song_id}/pdf")
     suspend fun getSongPdf(@Path("song_id") songId: Int): Response<ResponseBody>
 
+    @GET("songs/{song_id}/page/{page_number}")
+    suspend fun getSongPage(
+        @Path("song_id") songId: Int,
+        @Path("page_number") pageNumber: Int
+    ): Response<ResponseBody>
+
+
+
     @GET("songs/")
     suspend fun basicSearch(
         @Query("search") query: String,
