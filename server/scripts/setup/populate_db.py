@@ -26,7 +26,7 @@ SERVER_DIR = SCRIPT_DIR.parent.parent
 if str(SERVER_DIR) not in sys.path:
     sys.path.insert(0, str(SERVER_DIR))
 
-# Import shared utilities
+# Import shared utilities and setup environment FIRST
 from scripts.setup.shared_utils import (
     setup_environment, get_data_paths, ensure_directories,
     read_metadata, parse_chordpro_metadata,
@@ -34,10 +34,13 @@ from scripts.setup.shared_utils import (
     validate_environment
 )
 
+# Load environment before importing database module
+setup_environment()
+
 # Database imports
 from scripts.runtime.database import (
-    Song, AsyncSessionLocal, create_db_and_tables_async,
-    get_database_url, engine
+    Song, create_db_and_tables_async,
+    get_database_url, get_engine, get_session_factory
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
@@ -205,7 +208,7 @@ async def setup_search_infrastructure() -> bool:
     if concurrent:
         idx_title = "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_songs_title_trgm ON songs USING gin (title gin_trgm_ops);"
         idx_artist = "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_songs_artist_trgm ON songs USING gin (artist gin_trgm_ops);"
-        idx_title_btree = "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_songs_title_btree ON songs (title);"
+        idx_title_btree = "CREATE INDEX IF NOT EXISTS idx_songs_title_btree ON songs (title);"  # Non-concurrent for transaction phase
     else:
         idx_title = "CREATE INDEX IF NOT EXISTS idx_songs_title_trgm ON songs USING gin (title gin_trgm_ops);"
         idx_artist = "CREATE INDEX IF NOT EXISTS idx_songs_artist_trgm ON songs USING gin (artist gin_trgm_ops);"
@@ -233,29 +236,67 @@ async def setup_search_infrastructure() -> bool:
     
     for attempt in range(max_retries):
         try:
-            # Use autocommit connection for CONCURRENTLY operations
-            async with engine.connect() as conn:
-                ac = conn.execution_options(isolation_level="AUTOCOMMIT")
-                
+            engine = get_engine()
+            
+            # First, enable extension and create non-concurrent indexes in transaction
+            async with engine.begin() as conn:
                 # Enable extension
                 print(f"   Enabling pg_trgm extension...", end=" ")
                 try:
-                    await ac.execute(text(enable_ext))
+                    await conn.execute(text(enable_ext))
                     print("done")
                 except Exception as e:
                     print(f"not done {e}")
                     return False
                 
-                # Create trigram indexes
-                print(f"   Creating trigram indexes...")
+                # Create B-tree index (non-concurrent)
+                print(f"   Creating B-tree indexes...")
+                print(f"      - title B-tree index...", end=" ")
+                try:
+                    await conn.execute(text(idx_title_btree))
+                    print("done")
+                except Exception as e:
+                    if "already exists" in str(e).lower():
+                        print("done (exists)")
+                    else:
+                        print(f"not done {e}")
+                
+                # Create FTS infrastructure (non-concurrent)
+                if fts_statements:
+                    print(f"   🔍 Setting up full-text search ({fts_mode} mode)...")
+                    for stmt in fts_statements:
+                        if "CONCURRENTLY" in stmt:
+                            continue  # Skip concurrent statements for later
+                        
+                        if stmt.startswith("ALTER TABLE"):
+                            print(f"      - Adding tsvector column...", end=" ")
+                        elif "fts_expr" in stmt:
+                            print(f"      - Creating expression index...", end=" ")
+                        else:
+                            print(f"      - Executing FTS statement...", end=" ")
+                        
+                        try:
+                            await conn.execute(text(stmt))
+                            print("done")
+                        except Exception as e:
+                            if "already exists" in str(e).lower():
+                                print("done (exists)")
+                            else:
+                                print(f"not done {e}")
+            
+            # Now create CONCURRENT indexes outside transaction
+            async with engine.connect() as conn:
+                # Use execution_options for autocommit mode
+                conn = await conn.execution_options(isolation_level="AUTOCOMMIT")
+                
+                print(f"   Creating concurrent trigram indexes...")
                 for stmt, desc in [
                     (idx_title, "title trigram index"),
                     (idx_artist, "artist trigram index"),
-                    (idx_title_btree, "title B-tree index")
                 ]:
                     print(f"      - {desc}...", end=" ")
                     try:
-                        await ac.execute(text(stmt))
+                        await conn.execute(text(stmt))
                         print("done")
                     except Exception as e:
                         if "already exists" in str(e).lower():
@@ -263,21 +304,19 @@ async def setup_search_infrastructure() -> bool:
                         else:
                             print(f"not done {e}")
                 
-                # Create FTS infrastructure
+                # Create concurrent FTS indexes
                 if fts_statements:
-                    print(f"   🔍 Setting up full-text search ({fts_mode} mode)...")
                     for stmt in fts_statements:
-                        if stmt.startswith("ALTER TABLE"):
-                            print(f"      - Adding tsvector column...", end=" ")
-                        elif "fts_expr" in stmt:
-                            print(f"      - Creating expression index...", end=" ")
-                        elif "ts_gin" in stmt:
-                            print(f"      - Creating tsvector index...", end=" ")
+                        if "CONCURRENTLY" not in stmt:
+                            continue  # Already handled above
+                        
+                        if "ts_gin" in stmt:
+                            print(f"      - Creating concurrent tsvector index...", end=" ")
                         else:
-                            print(f"      - Executing FTS statement...", end=" ")
+                            print(f"      - Creating concurrent FTS index...", end=" ")
                         
                         try:
-                            await ac.execute(text(stmt))
+                            await conn.execute(text(stmt))
                             print("done")
                         except Exception as e:
                             if "already exists" in str(e).lower():
@@ -520,6 +559,7 @@ async def populate_database(paths: Dict[str, str], args) -> int:
 
     # Database operations
     try:
+        AsyncSessionLocal = get_session_factory()
         async with AsyncSessionLocal() as session:
             print(f"💾 Database session established")
             
@@ -655,7 +695,12 @@ async def main(argv=None):
     else:
         print("Skipping search infrastructure setup (--skip-search)")
     
-    # Run population
+    # If only setting up search, exit here without processing songs
+    if args.setup_search and not args.reset_songs and not args.songs_only and not args.regen_assets:
+        print("✅ Search infrastructure setup completed")
+        return 0
+    
+    # Run population only if not just setting up search
     try:
         return await populate_database(paths, args)
     except KeyboardInterrupt:
