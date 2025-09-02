@@ -15,6 +15,7 @@ import datetime
 import random
 import string
 import requests  # NEW: for proxying to FastAPI
+import json
 
 from flask import (
     Flask, render_template, request, send_from_directory,
@@ -302,7 +303,7 @@ def search_title():
     return render_template("search_title.html", keyword=keyword, results=results)
 
 # -----------------------------------------------------------------------------
-# Room Routes
+# Room Routes WITH WEBSOCKET BROADCASTING
 # -----------------------------------------------------------------------------
 @app.route("/rooms/", methods=["POST"])
 def create_room_api():
@@ -416,10 +417,10 @@ def get_room_details_internal(room_id):
         "page": room_data["page"]
     })
 
-# NEW: Select Song For Room endpoint
+# NEW: Select Song For Room endpoint WITH BROADCASTING
 @app.route("/rooms/<room_id>/song", methods=["POST"])
 def select_song_for_room(room_id):
-    """Select Song For Room - matches your API docs"""
+    """Select Song For Room - NOW WITH WEBSOCKET BROADCASTING"""
     if room_id not in rooms_data:
         return jsonify({"error": "Room not found"}), 404
     
@@ -458,10 +459,10 @@ def select_song_for_room(room_id):
     print(f"Room {room_id}: Host selected song '{song_id}'")
     return jsonify({"message": "Song selected successfully"})
 
-# NEW: Update Room Page endpoint
+# NEW: Update Room Page endpoint WITH BROADCASTING
 @app.route("/rooms/<room_id>/page", methods=["POST"])
 def update_room_page(room_id):
-    """Update Room Page - matches your API docs"""
+    """Update Room Page - NOW WITH WEBSOCKET BROADCASTING"""
     if room_id not in rooms_data:
         return jsonify({"error": "Room not found"}), 404
     
@@ -502,6 +503,86 @@ def update_room_page(room_id):
     print(f"Room {room_id}: Host changed to page {page}")
     return jsonify({"message": "Page updated successfully"})
 
+@app.route("/rooms/<room_id>/image", methods=["GET"])
+def get_room_image(room_id):
+    """Get Room Current Image - proxy to production backend"""
+    if room_id not in rooms_data:
+        return jsonify({"error": "Room not found"}), 404
+    
+    # Verify authentication
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({"error": "Authorization required"}), 401
+    
+    token = auth_header.split(' ')[1]
+    try:
+        decoded_token = verify_id_token(token)
+        if not decoded_token:
+            return jsonify({"error": "Invalid token"}), 401
+    except Exception as e:
+        print(f"Token verification error: {e}")
+        return jsonify({"error": "Authentication failed"}), 401
+    
+    room_data = rooms_data[room_id]
+    song_id = room_data.get('song_id')
+    page = room_data.get('page', 1)
+    
+    if not song_id:
+        return jsonify({"error": "No song selected"}), 404
+    
+    # Call the production backend for images
+    try:
+        # Use the production server for images
+        image_url = f"http://34.125.143.141:8000/songs/{song_id}/image"
+        headers = {"Authorization": f"Bearer {token}"}
+        params = {"page": page}
+        
+        print(f"Calling production image URL: {image_url} with page={page}")
+        response = requests.get(image_url, headers=headers, params=params, timeout=30)
+        
+        if response.status_code == 200:
+            # Return the image directly
+            content_type = response.headers.get('content-type', 'image/png')
+            return Response(response.content, mimetype=content_type)
+        else:
+            print(f"Production backend image error: {response.status_code}")
+            # Fallback to SVG placeholder if production server fails
+            return generate_placeholder_image(song_id, page)
+            
+    except requests.RequestException as e:
+        print(f"Error calling production backend: {e}")
+        # Fallback to SVG placeholder
+        return generate_placeholder_image(song_id, page)
+        
+def generate_placeholder_image(song_id, page):
+    """Generate SVG placeholder when production backend is unavailable"""
+    svg_content = f'''
+    <svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100%" height="100%" fill="#f8f9fa" stroke="#dee2e6" stroke-width="2"/>
+        <text x="400" y="200" font-family="Arial" font-size="48" text-anchor="middle" fill="#495057">
+            Song: {song_id}
+        </text>
+        <text x="400" y="280" font-family="Arial" font-size="36" text-anchor="middle" fill="#dc3545">
+            Page: {page}
+        </text>
+        <text x="400" y="420" font-family="Arial" font-size="16" text-anchor="middle" fill="#6c757d">
+            (Placeholder - Production server unavailable)
+        </text>
+        <!-- Visual page indicator -->
+        <circle cx="{50 + (page * 30) % 700}" cy="500" r="20" fill="#0d6efd"/>
+        <text x="{50 + (page * 30) % 700}" y="507" font-family="Arial" font-size="14" text-anchor="middle" fill="white">
+            {page}
+        </text>
+    </svg>
+    '''
+    
+    response = Response(svg_content, mimetype='image/svg+xml')
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    
+    return response
+'''
 # Updated: Get Room Current Image endpoint
 @app.route("/rooms/<room_id>/image", methods=["GET"])
 def get_room_image(room_id):
@@ -551,6 +632,7 @@ def get_room_image(room_id):
     except requests.RequestException as e:
         print(f"Error calling backend for image: {e}")
         return jsonify({"error": "Backend unavailable"}), 502
+        '''
 
 # Legacy route for backward compatibility
 @app.route("/api/rooms", methods=["POST"])
