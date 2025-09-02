@@ -118,3 +118,9 @@ wsproto==1.2.0
 
 # Async PostgreSQL driver
 asyncpg==0.29.0
+
+# For HopeJAM unlimited webscraping service
+selenium>=4.0.0
+webdriver-manager>=3.8.0
+beautifulsoup4>=4.9.0
+click>=8.0.0
