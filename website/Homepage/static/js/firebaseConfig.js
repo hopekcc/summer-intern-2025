@@ -1,25 +1,30 @@
+
 // static/js/firebaseConfig.js
+
+// Import required Firebase SDKs (v9 modular syntax)
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
-import { getAuth }        from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
-import { getAnalytics }   from "https://www.gstatic.com/firebasejs/9.22.0/firebase-analytics.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-analytics.js";
 
-
-// Your web app's Firebase configuration
-// Replace these values with your Firebase project settings
+// Firebase configuration object
+// Replace the values below with your own Firebase project settings
 const firebaseConfig = {
   apiKey: "AIzaSyAQ3r-8kqsWOgBkWRKs-bApV33oeu-AICs",
   authDomain: "hopekcc-2024-summer-intern-api.firebaseapp.com",
   projectId: "hopekcc-2024-summer-intern-api",
-  storageBucket: "hopekcc-2024-summer-intern-api.firebasestorage.app",
+  storageBucket: "hopekcc-2024-summer-intern-api.appspot.com",  // fixed to standard format
   messagingSenderId: "172531116306",
   appId: "1:172531116306:web:d898ae28b5f79a425babcb"
 };
 
-// Initialize Firebase
+// Initialize Firebase App
 const app = initializeApp(firebaseConfig);
-// Initialize Firebase Authentication and get a reference to the service
+
+// Initialize Firebase Authentication and export the instance
 const auth = getAuth(app);
-// Initialize Analytics (optional)
+
+// Initialize Analytics (optional, can be removed if not needed)
 const analytics = getAnalytics(app);
 
+// Export instances so other scripts can import them
 export { app, auth, analytics };
