@@ -69,6 +69,7 @@ import kotlinx.coroutines.flow.take
 fun ProfileScreen(
     navController: NavController,
     playlistViewModel: PlaylistViewModel,
+    username: String,
     onLogout: () -> Unit
 ) {
     val context = LocalContext.current
@@ -83,6 +84,12 @@ fun ProfileScreen(
 
     val playlists by playlistViewModel.playlists.collectAsStateWithLifecycle()
     val first3Playlists = playlists.take(3)
+
+    LaunchedEffect(Unit) {
+        if (playlistViewModel.playlists.value.isEmpty()) {
+            playlistViewModel.loadAllPlaylists()
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background
@@ -185,7 +192,7 @@ fun ProfileScreen(
 
                         Column {
                             Text(
-                                stringResource(R.string.username),
+                                username,
                                 style = MaterialTheme.typography.titleLarge,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -421,6 +428,30 @@ fun Playlist(
                 SongButton(onClick = {})
                 Spacer(modifier = Modifier.height(12.dp))
             }
+
+            //Check if the playlist has any songs
+            if (playlist.songs.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 50.dp,150.dp, end = 40.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Playlist is empty,\nadd a song by searching one up!",
+                            modifier = Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            } else {
+                items(playlist.songs.size) { index ->
+                    SongButton(onClick = {})
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+            }
         }
     }
 }
@@ -498,9 +529,11 @@ fun AllPlaylists(
             }
         }
     }
-    // Load playlists when composable is first displayed
+
     LaunchedEffect(Unit) {
-        playlistViewModel.loadAllPlaylists()
+        if (playlistViewModel.playlists.value.isEmpty()) {
+            playlistViewModel.loadAllPlaylists()
+        }
     }
 }
 

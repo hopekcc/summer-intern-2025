@@ -1,6 +1,9 @@
 package com.example.chordproapp.viewmodels
 
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chordproapp.data.model.Playlist
@@ -46,7 +49,7 @@ class PlaylistViewModel(
             val newPlaylist = repository.createPlaylist(name)
             if (newPlaylist != null) {
                 loadAllPlaylists()
-                markAsNew(newPlaylist.name) // Use playlist name instead of ID for marking as new
+                markAsNew(newPlaylist.name)
             } else {
                 _errorMessage.value = "Failed to create playlist"
             }
@@ -54,13 +57,15 @@ class PlaylistViewModel(
         }
     }
 
-    fun addSongToPlaylist(playlistId: String, songId: Int) {
+    fun addSongToPlaylist(playlistId: String, songId: Int, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             val success = repository.addSongsToPlaylist(playlistId, songId)
             if (success) loadAllPlaylists()
             else _errorMessage.value = "Failed to add song"
+            onResult(success)
         }
     }
+
 
     fun deletePlaylist(playlistId: String) {
         viewModelScope.launch {

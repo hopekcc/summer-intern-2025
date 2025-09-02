@@ -13,10 +13,7 @@ class PlaylistRepository(tokenProvider: () -> String?) {
     private val api: PlaylistApiService
 
     init {
-        val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
-
+        val logging = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BODY }
         val client = OkHttpClient.Builder()
             .addInterceptor(logging)
             .addInterceptor(AuthInterceptor(tokenProvider))
@@ -34,7 +31,7 @@ class PlaylistRepository(tokenProvider: () -> String?) {
         return try {
             val response = api.createPlaylist(CreatePlaylistRequest(name))
             if (response.isSuccessful) {
-                response.body()?.data // Extract data from wrapped response
+                response.body()?.data
             } else null
         } catch (e: Exception) {
             null
@@ -44,17 +41,22 @@ class PlaylistRepository(tokenProvider: () -> String?) {
     suspend fun addSongsToPlaylist(playlistId: String, songId: Int): Boolean {
         return try {
             val response = api.addSongs(playlistId, songId)
-            response.isSuccessful
+            val body = response.body()
+            println("Add song response: $body") // debug
+            response.isSuccessful && (body?.success == true)
         } catch (e: Exception) {
+            println("Add song exception: ${e.message}") // debug
             false
         }
     }
+
+
 
     suspend fun listAllPlaylists(): List<Playlist> {
         return try {
             val response = api.listAllPlaylists()
             if (response.isSuccessful) {
-                response.body()?.data ?: emptyList() // Extract data array from wrapped response
+                response.body()?.data ?: emptyList()
             } else {
                 emptyList()
             }
