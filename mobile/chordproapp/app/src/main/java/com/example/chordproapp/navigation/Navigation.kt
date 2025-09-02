@@ -81,15 +81,21 @@ fun AppNavigation(
         }
 
         composable(
-            route = "viewer/{songId}",
-            arguments = listOf(navArgument("songId") { type = NavType.IntType })
+            route = "viewer/{songId}/{pageCount}",
+            arguments = listOf(
+                navArgument("songId") { type = NavType.IntType },
+                navArgument("pageCount") { type = NavType.IntType }
+            )
         ) { backStackEntry ->
             val songId = backStackEntry.arguments?.getInt("songId") ?: 0
+            val pageCount = backStackEntry.arguments?.getInt("pageCount") ?: 1
             Viewer(
                 songId = songId,
+                totalPages = pageCount,
                 onClose = { navController.popBackStack() },
                 idTokenProvider = idTokenProvider
             )
         }
+
     }
 }

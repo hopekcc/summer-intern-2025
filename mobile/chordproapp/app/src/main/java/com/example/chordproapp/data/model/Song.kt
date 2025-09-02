@@ -1,11 +1,17 @@
 package com.example.chordproapp.data.model
 
+import com.google.gson.annotations.SerializedName
+
 data class Song(
-    val id: Int,
-    val title: String
+    @SerializedName("song_id") val id: Int,
+    val title: String,
+    val artist: String,
+    @SerializedName("page_count") val pageCount: Int
 )
 
 data class SongDetail(
-    val id: Int,
-    val title: String
+    @SerializedName("song_id") val id: Int,
+    val title: String,
+    val artist: String,
+    @SerializedName("page_count") val pageCount: Int
 )

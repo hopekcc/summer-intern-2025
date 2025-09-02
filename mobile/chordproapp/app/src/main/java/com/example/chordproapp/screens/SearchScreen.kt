@@ -11,14 +11,19 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.example.chordproapp.data.model.Playlist
 import com.example.chordproapp.data.repository.PlaylistRepository
 import com.example.chordproapp.viewmodels.PlaylistViewModel
+import com.example.chordproapp.data.repository.SongRepository
 import com.example.chordproapp.viewmodels.SearchViewModel
 import kotlinx.coroutines.launch
+
 
 @Composable
 fun SearchScreen(
@@ -44,6 +49,20 @@ fun SearchScreen(
     LaunchedEffect(Unit) { playlistViewModel.loadAllPlaylists() }
 
     // Search state
+    viewModel: SearchViewModel = run {
+        val context = LocalContext.current
+        viewModel(
+            factory = object : ViewModelProvider.Factory {
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    @Suppress("UNCHECKED_CAST")
+                    return SearchViewModel(
+                        SongRepository(idTokenProvider, context)
+                    ) as T
+                }
+            }
+        )
+    }
+) {
     var query by remember { mutableStateOf("") }
     val searchResults by searchViewModel.searchResults.collectAsState()
     val isLoading by searchViewModel.isLoading.collectAsState()
@@ -83,6 +102,7 @@ fun SearchScreen(
 
             // Search bar
             item {
+                // Search Bar
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
@@ -95,7 +115,7 @@ fun SearchScreen(
                     },
                     placeholder = {
                         Text(
-                            "Search music sheets, composers, pieces...",
+                            "Search music sheets",
                             style = MaterialTheme.typography.bodyLarge
                         )
                     },
@@ -182,6 +202,22 @@ fun SearchScreen(
                                 Text("Artist", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), modifier = Modifier.padding(top = 4.dp))
                             }
 
+                            Button(
+                                onClick = {
+                                    navController.navigate("viewer/${song.id}/${song.pageCount}")
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondary,
+                                    contentColor = MaterialTheme.colorScheme.primary
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+                            ) {
+                                Text(
+                                    "View Sample Sheet",
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+
                             Row {
                                 // View button
                                 Button(
@@ -236,7 +272,6 @@ fun SearchScreen(
                                 }
 
 
-                            }
                         }
                     }
                 }
@@ -259,4 +294,5 @@ fun SearchScreen(
         }
     }
 }
+
 

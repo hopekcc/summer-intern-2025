@@ -8,12 +8,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import com.example.chordproapp.data.model.Song
-import com.example.chordproapp.data.repository.SearchType
 import com.example.chordproapp.data.repository.SongRepository
 
-class SearchViewModel(private val idTokenProvider: () -> String?) : ViewModel() {
-    private val repository = SongRepository(idTokenProvider)
-
+class SearchViewModel(
+    private val repository: SongRepository
+) : ViewModel() {
     private val _searchResults = MutableStateFlow<List<Song>>(emptyList())
     val searchResults: StateFlow<List<Song>> = _searchResults
 
@@ -38,7 +37,6 @@ class SearchViewModel(private val idTokenProvider: () -> String?) : ViewModel() 
             _error.value = null
 
             try {
-                // only one arg now
                 _searchResults.value = repository.searchSongs(query)
             } catch (e: Exception) {
                 _error.value = "Search failed: ${e.message}"
@@ -48,8 +46,6 @@ class SearchViewModel(private val idTokenProvider: () -> String?) : ViewModel() 
             }
         }
     }
-
-
 
     fun loadAllSongs() {
         viewModelScope.launch {
