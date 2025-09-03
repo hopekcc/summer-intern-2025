@@ -48,8 +48,12 @@ fun AppNavigation(
             )
         }
 
+
+
+        //playlist screens:
+
         composable("profile") {
-            ProfileScreen(navController, playlistViewModel, onLogout)
+            ProfileScreen(navController, playlistViewModel,username = titleText, onLogout)
         }
         composable("allPlaylists") {
             AllPlaylists(navController, playlistViewModel)
@@ -74,7 +78,6 @@ fun AppNavigation(
             } else {
                 Text("Loading playlist...")
             }
-
         }
 
         composable(

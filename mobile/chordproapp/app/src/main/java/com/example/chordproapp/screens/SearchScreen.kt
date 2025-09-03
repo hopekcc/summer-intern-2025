@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,14 +17,20 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import com.example.chordproapp.data.model.Playlist
+import com.example.chordproapp.data.repository.PlaylistRepository
+import com.example.chordproapp.viewmodels.PlaylistViewModel
 import com.example.chordproapp.data.repository.SongRepository
 import com.example.chordproapp.viewmodels.SearchViewModel
+import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.launch
+
 
 @Composable
 fun SearchScreen(
     navController: NavHostController,
     idTokenProvider: () -> String?,
-    viewModel: SearchViewModel = run {
+    searchViewModel: SearchViewModel = run {
         val context = LocalContext.current
         viewModel(
             factory = object : ViewModelProvider.Factory {
@@ -37,17 +44,40 @@ fun SearchScreen(
         )
     }
 ) {
-    var query by remember { mutableStateOf("") }
-    val searchResults by viewModel.searchResults.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val error by viewModel.error.collectAsState(initial = null)
+    // Repository
+    val playlistRepository = remember { PlaylistRepository(idTokenProvider) }
 
-    LaunchedEffect(query) {
-        viewModel.searchSongs(query)
-    }
+    // Get current user ID from Firebase
+    val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
+    // PlaylistViewModel with inline factory
+    val playlistViewModel: PlaylistViewModel = viewModel(
+        key = "playlistViewModel",
+        factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                return PlaylistViewModel(playlistRepository, currentUserId) as T
+            }
+        }
+    )
+
+    // Collect playlists
+    val playlists by playlistViewModel.playlists.collectAsState()
+    LaunchedEffect(Unit) { playlistViewModel.loadAllPlaylists() }
+
+    // Search state
+    var query by remember { mutableStateOf("") }
+    val searchResults by searchViewModel.searchResults.collectAsState()
+    val isLoading by searchViewModel.isLoading.collectAsState()
+    val error by searchViewModel.error.collectAsState(initial = null)
+    LaunchedEffect(query) { searchViewModel.searchSongs(query) }
+
+    // Snackbar
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
@@ -55,11 +85,9 @@ fun SearchScreen(
                 .padding(innerPadding)
                 .padding(24.dp)
         ) {
+            // Header
             item {
-                // Header Section
-                Column(
-                    modifier = Modifier.padding(bottom = 32.dp)
-                ) {
+                Column(modifier = Modifier.padding(bottom = 32.dp)) {
                     Text(
                         "Search",
                         style = MaterialTheme.typography.headlineLarge,
@@ -74,6 +102,7 @@ fun SearchScreen(
                 }
             }
 
+            // Search bar
             item {
                 // Search Bar
                 OutlinedTextField(
@@ -107,15 +136,14 @@ fun SearchScreen(
                 )
             }
 
+            // Error message
             error?.let { errorMessage ->
                 item {
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer
-                        )
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
                     ) {
                         Text(
                             text = errorMessage,
@@ -127,6 +155,7 @@ fun SearchScreen(
                 }
             }
 
+            // Loading
             if (isLoading) {
                 item {
                     Box(
@@ -135,13 +164,12 @@ fun SearchScreen(
                             .padding(32.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
 
+            // Search results
             if (searchResults.isNotEmpty()) {
                 item {
                     Text(
@@ -153,14 +181,15 @@ fun SearchScreen(
                 }
 
                 items(searchResults) { song ->
+                    var expanded by remember { mutableStateOf(false) }
+                    val playlists by playlistViewModel.playlists.collectAsState()
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 12.dp),
+                            .padding(bottom = 10.dp),
                         shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surface
-                        ),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                         border = CardDefaults.outlinedCardBorder()
                     ) {
@@ -172,32 +201,82 @@ fun SearchScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    song.title, // Use real song title
-                                    style = MaterialTheme.typography.titleMedium,
+                                    song.title,
+                                    style = MaterialTheme.typography.titleLarge,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    "Artist", // Artist
-                                    style = MaterialTheme.typography.bodyMedium,
+                                    "Artist",
+                                    style = MaterialTheme.typography.bodyLarge,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                                     modifier = Modifier.padding(top = 4.dp)
                                 )
                             }
-                            Button(
-                                onClick = {
-                                    navController.navigate("viewer/${song.id}/${song.pageCount}")
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.secondary,
-                                    contentColor = MaterialTheme.colorScheme.primary
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
-                            ) {
-                                Text(
-                                    "View Sample Sheet", 
-                                    style = MaterialTheme.typography.labelMedium
-                                )
+
+                            Column {
+                                Button(
+                                    onClick = { navController.navigate("viewer/${song.id}/${song.pageCount}") },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.secondary,
+                                        contentColor = MaterialTheme.colorScheme.primary
+                                    ),
+                                    shape = RoundedCornerShape(12.dp),
+                                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+                                ) {
+                                    Text(
+                                        "View Sample Sheet",
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+
+                                // Add to Playlist Dropdown
+                                Box {
+                                    Button(
+                                        onClick = { expanded = true },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
+                                        ),
+                                        shape = RoundedCornerShape(12.dp),
+                                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+                                    ) {
+                                        Text("Add to", style = MaterialTheme.typography.labelMedium)
+                                        Icon(
+                                            Icons.Default.LibraryMusic,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(25.dp).padding(start = 8.dp)
+                                        )
+                                    }
+
+                                    DropdownMenu(
+                                        expanded = expanded,
+                                        onDismissRequest = { expanded = false }
+                                    ) {
+                                        playlists.forEach { playlist ->
+                                            // Check if song already exists
+                                            val alreadyAdded = playlist.songs.any { it.id == song.id }
+
+                                            DropdownMenuItem(
+                                                text = { Text(playlist.name + if (alreadyAdded) " ✅" else "") },
+                                                onClick = {
+                                                    expanded = false
+                                                    if (!alreadyAdded) {
+                                                        playlistViewModel.addSongToPlaylist(playlist.id, song) { success ->
+                                                            coroutineScope.launch {
+                                                                val message = if (success) {
+                                                                    "Added to ${playlist.name}"
+                                                                } else {
+                                                                    "Failed to add to ${playlist.name}"
+                                                                }
+                                                                snackbarHostState.showSnackbar(message)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

@@ -33,21 +33,25 @@ interface PlaylistApiService {
     @POST("playlists/")
     suspend fun createPlaylist(@Body request: CreatePlaylistRequest): Response<SinglePlaylistResponse>
 
-    @POST("playlists/{id}/songs/{song_id}")
+    data class AddSongRequest(
+        val song_id: String
+    )
+
+    @POST("playlists/{id}/songs")
     suspend fun addSongs(
-        @Path("id") id: String,
-        @Path("song_id") songId: Int
+        @Path("id") playlistId: String,
+        @Body body: AddSongRequest
     ): Response<SinglePlaylistResponse>
 
     @GET("playlists/")
     suspend fun listAllPlaylists(): Response<PlaylistApiResponse>
 
     @DELETE("playlists/{id}")
-    suspend fun deletePlaylist(@Path("id") id: String): Response<ResponseBody>
+    suspend fun deletePlaylist(@Path("id") playlistId: String): Response<ResponseBody>
 
     @DELETE("playlists/{id}/songs/{song_id}")
     suspend fun removeSong(
-        @Path("id") id: String,
+        @Path("id") playlistId: String,
         @Path("song_id") songId: Int
     ): Response<ResponseBody>
 }

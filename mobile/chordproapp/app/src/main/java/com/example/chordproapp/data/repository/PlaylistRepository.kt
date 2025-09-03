@@ -13,10 +13,7 @@ class PlaylistRepository(tokenProvider: () -> String?) {
     private val api: PlaylistApiService
 
     init {
-        val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
-
+        val logging = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BODY }
         val client = OkHttpClient.Builder()
             .addInterceptor(logging)
             .addInterceptor(AuthInterceptor(tokenProvider))
@@ -34,18 +31,33 @@ class PlaylistRepository(tokenProvider: () -> String?) {
         return try {
             val response = api.createPlaylist(CreatePlaylistRequest(name))
             if (response.isSuccessful) {
-                response.body()?.data // Extract data from wrapped response
+                response.body()?.data
             } else null
         } catch (e: Exception) {
             null
         }
     }
 
-    suspend fun addSongsToPlaylist(playlistId: String, songId: Int): Boolean {
+    suspend fun addSongsToPlaylist(playlistId: String, songId: String): Boolean {
         return try {
-            val response = api.addSongs(playlistId, songId)
-            response.isSuccessful
+            println("[DEBUG] Adding song $songId to playlist $playlistId")
+            val response = api.addSongs(playlistId, PlaylistApiService.AddSongRequest(songId))
+            println("[DEBUG] API Response: ${response.code()}, Success: ${response.isSuccessful}")
+
+            if (response.isSuccessful) {
+                val body = response.body()
+                println("[DEBUG] Response body: $body")
+                val success = body?.success == true
+                println("[DEBUG] Final success result: $success")
+                success
+            } else {
+                println("[DEBUG] API call failed with code: ${response.code()}")
+                println("[DEBUG] Error body: ${response.errorBody()?.string()}")
+                false
+            }
         } catch (e: Exception) {
+            println("[DEBUG] Exception in addSongsToPlaylist: ${e.message}")
+            e.printStackTrace()
             false
         }
     }
@@ -54,7 +66,7 @@ class PlaylistRepository(tokenProvider: () -> String?) {
         return try {
             val response = api.listAllPlaylists()
             if (response.isSuccessful) {
-                response.body()?.data ?: emptyList() // Extract data array from wrapped response
+                response.body()?.data ?: emptyList()
             } else {
                 emptyList()
             }

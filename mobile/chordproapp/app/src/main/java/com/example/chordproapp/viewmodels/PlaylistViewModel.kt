@@ -4,17 +4,30 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chordproapp.data.model.Playlist
+import com.example.chordproapp.data.model.Song
 import com.example.chordproapp.data.repository.PlaylistRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 class PlaylistViewModel(
-    val repository: PlaylistRepository
+    val repository: PlaylistRepository,
+    private val userId: String // Add userId to ensure user-specific operations
 ) : ViewModel() {
 
     var newlyCreatedPlaylists = mutableStateMapOf<String, Boolean>()
         private set
+
+    private val _playlists = MutableStateFlow<List<Playlist>>(emptyList())
+    val playlists: StateFlow<List<Playlist>> = _playlists
+
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage
+
+    init {
+        // Automatically load playlists for this user when ViewModel is created
+        loadAllPlaylists()
+    }
 
     fun markAsNew(playlistName: String) {
         newlyCreatedPlaylists[playlistName] = true
@@ -28,53 +41,97 @@ class PlaylistViewModel(
         return newlyCreatedPlaylists[playlistName] ?: false
     }
 
-    private val _playlists = MutableStateFlow<List<Playlist>>(emptyList())
-    val playlists: StateFlow<List<Playlist>> = _playlists
-
-    private val _errorMessage = MutableStateFlow<String?>(null)
-    val errorMessage: StateFlow<String?> = _errorMessage
-
     fun loadAllPlaylists() {
         viewModelScope.launch {
-            val result = repository.listAllPlaylists()
-            _playlists.value = result
+            try {
+                val result = repository.listAllPlaylists()
+                _playlists.value = result
+                _errorMessage.value = null
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to load playlists: ${e.message}"
+            }
         }
     }
 
     fun createPlaylist(name: String, onResult: (Playlist?) -> Unit) {
         viewModelScope.launch {
-            val newPlaylist = repository.createPlaylist(name)
-            if (newPlaylist != null) {
-                loadAllPlaylists()
-                markAsNew(newPlaylist.name) // Use playlist name instead of ID for marking as new
-            } else {
-                _errorMessage.value = "Failed to create playlist"
+            try {
+                val newPlaylist = repository.createPlaylist(name)
+                if (newPlaylist != null) {
+                    loadAllPlaylists() // Reload to get fresh data
+                    markAsNew(newPlaylist.name)
+                    _errorMessage.value = null
+                } else {
+                    _errorMessage.value = "Failed to create playlist"
+                }
+                onResult(newPlaylist)
+            } catch (e: Exception) {
+                _errorMessage.value = "Error creating playlist: ${e.message}"
+                onResult(null)
             }
-            onResult(newPlaylist)
         }
     }
 
-    fun addSongToPlaylist(playlistId: String, songId: Int) {
+    fun addSongToPlaylist(playlistId: String, song: Song, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
-            val success = repository.addSongsToPlaylist(playlistId, songId)
-            if (success) loadAllPlaylists()
-            else _errorMessage.value = "Failed to add song"
+            try {
+                val success = repository.addSongsToPlaylist(playlistId, song.id.toString())
+                if (success) {
+                    // Immediately update local state
+                    _playlists.value = _playlists.value.map { pl ->
+                        if (pl.id == playlistId && !pl.songs.contains(song)) {
+                            pl.copy(songs = pl.songs + song)
+                        } else pl
+                    }
+                    _errorMessage.value = null
+                } else {
+                    _errorMessage.value = "Failed to add song to playlist"
+                }
+                onResult(success)
+            } catch (e: Exception) {
+                _errorMessage.value = "Error adding song: ${e.message}"
+                onResult(false)
+            }
         }
     }
 
     fun deletePlaylist(playlistId: String) {
         viewModelScope.launch {
-            val success = repository.deletePlaylist(playlistId)
-            if (success) loadAllPlaylists()
-            else _errorMessage.value = "Failed to delete playlist"
+            try {
+                val success = repository.deletePlaylist(playlistId)
+                if (success) {
+                    loadAllPlaylists() // Reload to get fresh data
+                    _errorMessage.value = null
+                } else {
+                    _errorMessage.value = "Failed to delete playlist"
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Error deleting playlist: ${e.message}"
+            }
         }
     }
 
     fun removeSongFromPlaylist(playlistId: String, songId: Int) {
         viewModelScope.launch {
-            val success = repository.removeSong(playlistId, songId)
-            if (success) loadAllPlaylists()
-            else _errorMessage.value = "Failed to remove song"
+            try {
+                val success = repository.removeSong(playlistId, songId)
+                if (success) {
+                    loadAllPlaylists() // Reload to get fresh data
+                    _errorMessage.value = null
+                } else {
+                    _errorMessage.value = "Failed to remove song from playlist"
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Error removing song: ${e.message}"
+            }
         }
     }
+
+    fun clearUserData() {
+        _playlists.value = emptyList()
+        _errorMessage.value = null
+        newlyCreatedPlaylists.clear()
+    }
+
+    fun getCurrentUserId(): String = userId
 }
