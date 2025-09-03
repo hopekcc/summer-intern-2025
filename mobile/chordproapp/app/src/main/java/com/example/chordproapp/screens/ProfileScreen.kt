@@ -109,13 +109,13 @@ fun ProfileScreen(
                     color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.padding(bottom = 32.dp)
                 )
-                IconButton(onClick = { playlistViewModel.loadAllPlaylists() }) {
-                    Icon(
-                        Icons.Default.Refresh,
-                        contentDescription = "Refresh Playlists",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
+//                IconButton(onClick = { playlistViewModel.loadAllPlaylists() }) {
+//                    Icon(
+//                        Icons.Default.Refresh,
+//                        contentDescription = "Refresh Playlists",
+//                        tint = MaterialTheme.colorScheme.primary
+//                    )
+//                }
             }
 
             item {
