@@ -9,12 +9,19 @@ This app uses a modular structure with reusable components, clean navigation, an
 
 Mobile/
 │
+
 ├── components/ # Reusable composables and UI elements (bars, etc.)
+
 ├── data/ # Data models, repositories, etc
+
 ├── navigation/ # Navigation setup using NavHost and routes
+
 ├── screens/ # Individual app screens (composables for each screen)
+
 ├── ui/ # App theme, colors, typography, and general styling
+
 ├── viewmodels/ # ViewModels for managing UI state
+
 └── MainActivity.kt # App entry point, sets up navigation and the main UI
 
 ## API Usage
