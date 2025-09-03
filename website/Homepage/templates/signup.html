@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Create Account{% endblock %}
+
+{% block content %}
+<section class="auth-wrapper">
+  <div class="auth-card">
+    <!-- LEFT: illustration 50% -->
+    <aside class="auth-aside">
+      <div class="auth-welcome">
+        <h2>Join us</h2>
+        <p>Create an account to manage songs, rooms, and ChordPro sheets.</p>
+      </div>
+      <div class="auth-illustration">
+        <img src="{{ url_for('static', filename='img/login_side.png') }}" alt="Create your HOPEKCC account" />
+      </div>
+    </aside>
+
+    <!-- RIGHT: signup form 50% -->
+    <div class="auth-form-container">
+      <div class="auth-form">
+        <h1 class="auth-title">Create account</h1>
+        <div id="msg" class="auth-error"></div>
+
+        <form id="signup-form" class="login-form">
+          <div class="form-group">
+            <label class="input-label" for="name">Name (optional)</label>
+            <div class="input-group">
+              <input type="text" id="name" placeholder="Your name" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="input-label" for="email">Email</label>
+            <div class="input-group">
+              <input type="email" id="email" placeholder="you@example.com" required />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="input-label" for="password">Password</label>
+            <div class="input-group">
+              <input type="password" id="password" placeholder="at least 6 characters" minlength="6" required />
+              <button type="button" class="toggle-pass" data-target="password">Show</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="input-label" for="password2">Confirm password</label>
+            <div class="input-group">
+              <input type="password" id="password2" placeholder="retype your password" minlength="6" required />
+              <button type="button" class="toggle-pass" data-target="password2">Show</button>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-primary auth-submit">Create account</button>
+
+          <p class="auth-small" style="margin-top:1rem;">
+            Already have an account?
+            <a href="{{ url_for('login_page') }}">Log in</a>
+          </p>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Reuse your simple show/hide control for both password fields
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.toggle-pass');
+    if (!btn) return;
+    const id = btn.getAttribute('data-target');
+    const el = document.getElementById(id);
+    if (el.type === 'password') { el.type = 'text'; btn.textContent = 'Hide'; }
+    else { el.type = 'password'; btn.textContent = 'Show'; }
+  });
+</script>
+
+<script type="module">
+  import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
+  import {
+    createUserWithEmailAndPassword,
+    updateProfile,
+    sendEmailVerification,
+    onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+
+  const form = document.getElementById('signup-form');
+  const msgEl = document.getElementById('msg');
+
+  // If already signed in, go home
+  onAuthStateChanged(auth, user => { if (user) window.location.href = "/"; });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    msgEl.className = 'auth-error';
+    msgEl.textContent = '';
+
+    const name = document.getElementById('name').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const pass1 = document.getElementById('password').value;
+    const pass2 = document.getElementById('password2').value;
+
+    if (pass1 !== pass2) {
+      msgEl.textContent = "Passwords do not match.";
+      return;
+    }
+
+    try {
+      msgEl.textContent = "Creating your account...";
+      const cred = await createUserWithEmailAndPassword(auth, email, pass1);
+
+      // Optional: set display name
+      if (name) {
+        await updateProfile(cred.user, { displayName: name });
+      }
+
+      // Optional: send verification email (you can keep or remove)
+      try { await sendEmailVerification(cred.user); } catch {}
+
+      // You are now signed in as the new user
+      window.location.href = "/";
+    } catch (err) {
+      msgEl.textContent = humanizeAuthError(err);
+    }
+  });
+
+  function humanizeAuthError(err) {
+    const code = err?.code || "";
+    if (code.includes("auth/email-already-in-use")) return "That email is already in use.";
+    if (code.includes("auth/invalid-email")) return "Please enter a valid email.";
+    if (code.includes("auth/weak-password")) return "Password must be at least 6 characters.";
+    if (code.includes("auth/operation-not-allowed")) return "Email/password sign-in is disabled in Firebase Auth settings.";
+    return "Could not create account. Please try again.";
+  }
+</script>
+{% endblock %}

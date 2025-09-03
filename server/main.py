@@ -1,32 +1,102 @@
-import sys
 import os
+import json
+import asyncio
+from dotenv import load_dotenv
+from pathlib import Path
 
-# This is the fix: Add the project root to the Python path
-# This allows the imports to work correctly when running from the 'server' directory
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+# Load environment variables ASAP so DATABASE_URL is available before database engine creation
+# Load the .env file located next to this file and override any pre-set env vars
+_dotenv_path = Path(__file__).with_name('.env')
+load_dotenv(_dotenv_path, override=True)
+FIREBASE_JSON = os.getenv("FIREBASE_JSON")
 
-# FastAPI server for real-time song sharing with WebSocket support
-from fastapi import FastAPI, Request, Depends
-from fastapi.middleware.cors import CORSMiddleware
 import firebase_admin
 from firebase_admin import credentials, auth
 from firebase_admin.auth import InvalidIdTokenError
-import json
-from dotenv import load_dotenv
+from fastapi import FastAPI, Depends, Request
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
-from server.scripts.logger import logger
-from server.scripts.database_models import init_database
-from server.routers import songs, rooms
-from server.dependencies import verify_firebase_token # Import for protected_route
-
-# Load environment variables
-load_dotenv()
-FIREBASE_JSON = os.getenv("FIREBASE_JSON")
+from scripts.runtime.logger import logger
+from scripts.runtime.database import create_db_and_tables_async as init_database
+from scripts.runtime.database import engine as db_engine
+from scripts.runtime.database import check_db_connectivity
+from scripts.runtime.websocket_server import start_websocket_server, get_websocket_factory
+from scripts.runtime.paths import get_database_dir
+from scripts.runtime.auth_middleware import get_current_user
+from routers import songs, rooms, playlists
 
 # Initialize FastAPI app
 app = FastAPI()
+
+# ===================================================================
+# App State and Lifespan Events
+# ===================================================================
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Starting up the application...")
+    await init_database()
+    logger.info("Database initialized.")
+    # Log which database/dialect we actually connected to
+    try:
+        db_url = db_engine.url.render_as_string(hide_password=True)
+        logger.info(f"DB Dialect: {db_engine.dialect.name} | URL: {db_url}")
+    except Exception:
+        logger.warning("Could not introspect database engine URL", exc_info=True)
+    
+    # Optional startup DB connectivity healthcheck
+    try:
+        do_check = os.getenv("DB_STARTUP_CHECK", "false").lower() in ("1", "true", "yes")
+        timeout = float(os.getenv("DB_HEALTHCHECK_TIMEOUT", "2.0"))
+        fail_on_error = os.getenv("FAIL_ON_DB_STARTUP_ERROR", "false").lower() in ("1", "true", "yes")
+        if do_check:
+            ok, detail, dur_ms = await check_db_connectivity(timeout_seconds=timeout)
+            if ok:
+                logger.info(f"DB startup healthcheck ok in {dur_ms:.1f}ms")
+            else:
+                logger.error("DB startup healthcheck failed", extra={"error": detail, "duration_ms": round(dur_ms, 1)})
+                if fail_on_error:
+                    raise RuntimeError(f"DB healthcheck failed: {detail}")
+    except Exception as e:
+        # If fail_on_error is true, this will bubble; otherwise, log and continue
+        if os.getenv("FAIL_ON_DB_STARTUP_ERROR", "false").lower() in ("1", "true", "yes"):
+            raise
+        logger.warning(f"Startup DB healthcheck encountered an error: {e}", exc_info=True)
+    
+    # Set up application state for WebSocket dependencies
+    # We construct these paths at startup; dependencies will be used for requests
+    database_dir = get_database_dir()
+    app.state.songs_dir = os.path.join(database_dir, "songs")
+    app.state.songs_pdf_dir = os.path.join(database_dir, "songs_pdf")
+    app.state.metadata_path = os.path.join(database_dir, "songs_metadata.json")
+    
+    # Start WebSocket server in a separate thread
+    ws_port = int(os.getenv("WEBSOCKET_PORT", 8766))
+    loop = asyncio.get_event_loop()
+    logger.info(f"Starting WebSocket server on port {ws_port}...")
+    try:
+        asyncio.ensure_future(start_websocket_server(port=ws_port))
+        logger.info("WebSocket server started successfully.")
+    except Exception as e:
+        logger.error(f"Failed to start WebSocket server: {e}", exc_info=True)
+
+# ===================================================================
+# Middleware
+# ===================================================================
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+
+# ===================================================================
+# API Routers
+# ===================================================================
+app.include_router(songs.router, prefix="/songs", tags=["songs"])
+app.include_router(rooms.router, prefix="/rooms", tags=["rooms"])
+app.include_router(playlists.router, prefix="/playlists", tags=["playlists"])
 
 # Initialize Firebase and database
 if FIREBASE_JSON:
@@ -37,47 +107,7 @@ if FIREBASE_JSON:
 else:
     raise ValueError("FIREBASE_JSON environment variable must be set")
 
-init_database()
-
-# TODO: SECURITY - This CORS policy is for development only.
-# Restrict `allow_origins` to the frontend domain before production.
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Request logging middleware
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    ip = request.headers.get("X-Forwarded-For", request.client.host)
-    method = request.method
-    url = str(request.url)
-    user_agent = request.headers.get("user-agent", "unknown")
-    
-    uid = email = "-"
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header.split()[1]
-        try:
-            decoded = auth.verify_id_token(token)
-            uid = decoded.get("uid", "-")
-            email = decoded.get("email", "-")
-        except InvalidIdTokenError:
-            logger.warning(f"Invalid token attempt from IP: {ip}")
-        except Exception:
-            logger.warning("Error decoding token", exc_info=True)
-    
-    try:
-        response = await call_next(request)
-        logger.info(f"{method} {url} - {response.status_code} | IP: {ip} | UID: {uid} | Email: {email} | UA: {user_agent}")
-        return response
-    except Exception:
-        logger.error(f"Unhandled error in {method} {url} | IP: {ip} | UID: {uid} | Email: {email}", exc_info=True)
-        raise
+ 
 
 # ============================================================================
 # BASIC ENDPOINTS
@@ -88,7 +118,7 @@ def root():
     return {"message": "FastAPI server is online. No authentication needed."}
 
 @app.get("/protected")
-def protected_route(user_data=Depends(verify_firebase_token)):
+def protected_route(user_data=Depends(get_current_user)):
     return {
         "message": "Access granted to protected route!",
         "user": {
@@ -97,8 +127,17 @@ def protected_route(user_data=Depends(verify_firebase_token)):
         }
     }
 
-# Include routers
-app.include_router(songs.router, prefix="/songs", tags=["songs"])
-app.include_router(rooms.router, prefix="/rooms", tags=["rooms"])
-
+# ===================================================================
+# Health Endpoints
+# ===================================================================
+@app.get("/health/db")
+async def health_db(timeout: float = 1.5):
+    ok, detail, dur_ms = await check_db_connectivity(timeout_seconds=timeout)
+    status_code = 200 if ok else 503
+    payload = {
+        "status": "ok" if ok else "error",
+        "duration_ms": round(dur_ms, 1),
+        "detail": None if ok else detail,
+    }
+    return JSONResponse(payload, status_code=status_code)
 

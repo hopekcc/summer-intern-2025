@@ -1,6 +1,8 @@
 package com.example.chordproapp.navigation
-
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -32,19 +34,16 @@ fun AppNavigation(
         startDestination = "sync" // Start with Sync screen
     ) {
         composable("sync") { SyncScreen(navController) }
-
         composable("joined_sync/{roomCode}") { backStackEntry ->
             val roomCode = backStackEntry.arguments?.getString("roomCode") ?: ""
             JoinedSyncScreen(navController, roomCode)
         }
-
         composable("search") {
             SearchScreen(
                 navController = navController,  // Add this line
                 idTokenProvider = idTokenProvider
             )
         }
-
         composable("profile") {
             ProfileScreen(navController, playlistViewModel, onLogout)
         }
@@ -54,19 +53,35 @@ fun AppNavigation(
         composable("newPlaylist") {
             NewPlaylist(navController, playlistViewModel)
         }
-        composable("playlist/{name}") { backStackEntry ->
-            val name = backStackEntry.arguments?.getString("name") ?: "Playlist Name"
-            Playlist(playlistName = name, songCount = 12, playlistViewModel,navController)
-        }
-
-        // Add this to your existing Navigation.kt file in the NavHost composable
         composable(
-            route = "viewer/{songId}",
-            arguments = listOf(navArgument("songId") { type = NavType.IntType })
+            route = "playlist/{playlistId}",
+            arguments = listOf(navArgument("playlistId") { type = NavType.StringType }) // Changed from IntType to StringType for UUID support
+        ) { backStackEntry ->
+            val playlistId = backStackEntry.arguments?.getString("playlistId") ?: "" // Changed from getInt to getString
+            val playlists by playlistViewModel.playlists.collectAsState(initial = emptyList())
+            val playlist = playlists.find { it.id == playlistId }
+            if (playlist != null) {
+                Playlist(
+                    playlistId = playlist.id,
+                    playlistViewModel = playlistViewModel,
+                    navController = navController
+                )
+            } else {
+                Text("Loading playlist...")
+            }
+        }
+        composable(
+            route = "viewer/{songId}/{pageCount}",
+            arguments = listOf(
+                navArgument("songId") { type = NavType.IntType },
+                navArgument("pageCount") { type = NavType.IntType }
+            )
         ) { backStackEntry ->
             val songId = backStackEntry.arguments?.getInt("songId") ?: 0
+            val pageCount = backStackEntry.arguments?.getInt("pageCount") ?: 1
             Viewer(
                 songId = songId,
+                totalPages = pageCount,
                 onClose = { navController.popBackStack() },
                 idTokenProvider = idTokenProvider
             )

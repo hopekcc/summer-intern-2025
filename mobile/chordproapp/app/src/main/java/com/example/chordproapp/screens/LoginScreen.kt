@@ -19,6 +19,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.chordproapp.viewmodels.PlaylistViewModel
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
@@ -28,7 +29,7 @@ import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
-    onLoginSuccess: (String) -> Unit,
+    onLoginSuccess: (String, String) -> Unit, // (userId, email)
     modifier: Modifier = Modifier
 ) {
     var email by remember { mutableStateOf("") }
@@ -203,7 +204,9 @@ fun LoginScreen(
                                             isLoading = false
                                             if (task.isSuccessful) {
                                                 val user = auth.currentUser
-                                                onLoginSuccess(user?.email ?: "User")
+                                                user?.let {
+                                                    onLoginSuccess(it.uid, it.email ?: "User")
+                                                }
                                             } else {
                                                 errorMessage = when (task.exception) {
                                                     is FirebaseAuthWeakPasswordException -> "Password is too weak"
@@ -220,7 +223,9 @@ fun LoginScreen(
                                             isLoading = false
                                             if (task.isSuccessful) {
                                                 val user = auth.currentUser
-                                                onLoginSuccess(user?.email ?: "User")
+                                                user?.let {
+                                                    onLoginSuccess(it.uid, it.email ?: "User")
+                                                }
                                             } else {
                                                 errorMessage = when (task.exception) {
                                                     is FirebaseAuthInvalidUserException -> "No account found with this email"

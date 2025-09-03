@@ -1,37 +1,41 @@
 
 <nav class="navbar">
     
-    <div class="logo">
-        <a href="/">HOPEKCC Chord Pro Tool</a>
-    </div>
+      <div class="logo">
+        <a id="brand" href="/">
+          <img src="{{ url_for('static', filename='img/logo_image.png') }}" alt="HOPEKCC Logo" style="height:40px;">
+        </a>
+      </div>
 
 
     <ul class="nav-links">
          <li><a href="https://www.hopekcc.org/" target="_blank" rel="noopener noreferrer">About</a></li>
+        <!--
         <li><a href="/features">Features</a></li>
+        -->
 
         <!-- Dropdown menu for Search -->
-        <li class="dropdown">
+        <!-- <li class="dropdown">
             <a href="#">Search ▾</a>
             <div class="dropdown-content">
                 <a href="/search_artist">Search by Artist</a>
                 <a href="/search_title">Search by Title</a>
             </div>
-        </li>
+        </li> -->
+        <a href="{{ url_for('search') }}">Search</a>
+      
+        <!-- Instead of dropdown -->
+        <li><a href="/rooms/create">Create Room</a></li>
+        <li><a href="/rooms/join">Join Room</a></li>
 
-        <!-- Dropdown menu for Rooms -->
-        <li class="dropdown">
-            <a href="#">Rooms ▾</a>
-            <div class="dropdown-content">
-                <a href="/rooms/create">Create Room</a>
-                <a href="/rooms/join">Join Room</a>
-            </div>
-        </li>
-
+        <li><a href="/playlist">Playlist</a></li>
+        <li><a href="/preview">Preview</a></li>
+        <!--
         <li><a href="/preview">Preview</a></li>
         <li><a href="/support">Support</a></li>
         <li><a href="/mobile">Mobile App</a></li>
         <li><a href="#" onclick="toggleDarkMode()">Dark Mode</a></li>
+        -->
         <li id="nav-signin"><a href="/login">Sign In</a></li>
         <li id="nav-signup"><a href="/signup" class="btn-signup">Sign Up</a></li>
         <li id="nav-user" style="display:none; font-weight:bold; margin-left:1rem;"></li>
@@ -80,7 +84,7 @@
     e.preventDefault();
     await signOut(auth);
     // Optionally redirect home:
-    window.location.href = '/';
+    window.location.href = '/logout';
   });
   </script>
 

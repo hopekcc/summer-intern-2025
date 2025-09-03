@@ -10,18 +10,31 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import com.example.chordproapp.data.repository.SongRepository
 import com.example.chordproapp.viewmodels.SearchViewModel
-
 
 @Composable
 fun SearchScreen(
     navController: NavHostController,
     idTokenProvider: () -> String?,
-    viewModel: SearchViewModel = viewModel {
-        SearchViewModel(idTokenProvider)
+    viewModel: SearchViewModel = run {
+        val context = LocalContext.current
+        viewModel(
+            factory = object : ViewModelProvider.Factory {
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    @Suppress("UNCHECKED_CAST")
+                    return SearchViewModel(
+                        SongRepository(idTokenProvider, context)
+                    ) as T
+                }
+            }
+        )
     }
 ) {
     var query by remember { mutableStateOf("") }
@@ -29,16 +42,8 @@ fun SearchScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState(initial = null)
 
-    LaunchedEffect(Unit) {
-        viewModel.loadAllSongs()
-    }
-
     LaunchedEffect(query) {
-        if (query.isEmpty()) {
-            viewModel.loadAllSongs()
-        } else {
-            viewModel.searchSongs(query)
-        }
+        viewModel.searchSongs(query)
     }
 
     Scaffold(
@@ -83,7 +88,7 @@ fun SearchScreen(
                     },
                     placeholder = {
                         Text(
-                            "Search music sheets, composers, pieces...",
+                            "Search music sheets",
                             style = MaterialTheme.typography.bodyLarge
                         )
                     },
@@ -180,8 +185,7 @@ fun SearchScreen(
                             }
                             Button(
                                 onClick = {
-                                    // PDF viewing logic here
-                                    navController.navigate("viewer/${song.id}")
+                                    navController.navigate("viewer/${song.id}/${song.pageCount}")
                                 },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.secondary,
@@ -191,7 +195,7 @@ fun SearchScreen(
                                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                             ) {
                                 Text(
-                                    "View Sheet", // Updated button text
+                                    "View Sample Sheet",
                                     style = MaterialTheme.typography.labelMedium
                                 )
                             }

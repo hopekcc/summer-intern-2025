@@ -2,42 +2,118 @@
 {% block title %}Create Room{% endblock %}
 
 {% block content %}
+<section style="max-width:640px;margin:2rem auto;">
   <h2>Create a New Room</h2>
-  <button id="btn-create">Create Room</button>
+
+  {% if not user %}
+    <p style="color:#d00;">Tip: You're not signed in. You can still create a demo room, but host-lock and history won't be enforced.</p>
+  {% endif %}
+
+  <div style="display:flex;gap:0.75rem;align-items:center;margin-top:1rem;">
+    <a class="btn-primary" href="/rooms/create" style="display:inline-block;padding:0.5rem 0.75rem;">Create (Redirect)</a>
+    <button id="btn-create" style="padding:0.5rem 0.75rem;">Create (AJAX)</button>
+  </div>
+
   <p id="create-result" style="margin-top:1rem;"></p>
+
+  <hr style="margin:2rem 0;">
+  <p>Already have a room? <a href="/rooms/join">Join here</a>.</p>
+</section>
 {% endblock %}
 
 {% block scripts %}
+<!-- Firebase -->
 <script type="module">
-  import { auth } from "{{ url_for('static', filename='js/firebaseConfig.js') }}";
-  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
 
-  onAuthStateChanged(auth, user => {
-    if (!user) {
-      document.getElementById('create-result').textContent = 'Please sign in first.';
-      return;
+  // Firebase config
+  const firebaseConfig = {
+    apiKey: "AIzaSyAQ3r-8kqsWOgBkWRKs-bApV33oeu-AICs",
+    authDomain: "hopekcc-2024-summer-intern-api.firebaseapp.com",
+    projectId: "hopekcc-2024-summer-intern-api",
+    storageBucket: "hopekcc-2024-summer-intern-api.appspot.com",
+    messagingSenderId: "172531116306",
+    appId: "1:172531116306:web:d898ae28b5f79a425babcb"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+
+  const btn = document.getElementById('btn-create');
+  const link = document.querySelector('a[href="/rooms/create"]'); // intercept the link
+  const out = document.getElementById('create-result');
+
+  let currentUser = null;
+  let idToken = null;
+
+  // Get token when signed in
+  onAuthStateChanged(auth, async (user) => {
+    currentUser = user;
+    if (user) {
+      try {
+        idToken = await user.getIdToken(true);
+        console.log('User authenticated, token obtained');
+      } catch (error) {
+        console.error('Error getting ID token:', error);
+      }
+    } else {
+      idToken = null;
+      console.log('User not authenticated');
     }
-    document.getElementById('btn-create').addEventListener('click', async () => {
-      const token = await user.getIdToken(/* forceRefresh */ true);
-      const res = await fetch('http://34.125.143.141:8000/rooms/create', {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer ' + token,
-          'Content-Type': 'application/json'
-        }
-      });
-      if (!res.ok) {
-        document.getElementById('create-result').textContent = 'Error: ' + await res.text();
+  });
+
+  async function createRoom() {
+    out.textContent = 'Creating...';
+    out.style.color = '#666';
+
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (idToken) {
+        headers['Authorization'] = `Bearer ${idToken}`;
+      } else {
+        // FastAPI requires auth; fail fast so the user knows to sign in
+        out.textContent = 'Please sign in first (Authorization token required).';
+        out.style.color = '#d00';
         return;
       }
-      const data = await res.json();        // { room_id: "ABC123" }
-      // Show link to room or redirect immediately:
-      const link = document.createElement('a');
-      link.href = `/rooms/${data.room_id}`;
-      link.textContent = `Go to Room ${data.room_id}`;
-      document.getElementById('create-result').innerHTML = '';
-      document.getElementById('create-result').appendChild(link);
+
+      // Hit the Flask proxy; it forwards the Authorization header to FastAPI
+      const res = await fetch('/rooms/', { method: 'POST', headers });
+      if (!res.ok) {
+        const text = await res.text();
+        out.textContent = `Error (${res.status}): ${text}`;
+        out.style.color = '#d00';
+        console.error('Room creation failed:', res.status, text);
+        return;
+      }
+
+      const data = await res.json();
+      const code = data.code || data.room_id || data.id;
+      if (!code) {
+        out.textContent = 'Error: no room code returned.';
+        out.style.color = '#d00';
+        return;
+      }
+
+      out.textContent = `Room created! Redirecting to ${code}...`;
+      out.style.color = '#059669';
+      setTimeout(() => { window.location.href = `/rooms/${code}`; }, 300);
+    } catch (e) {
+      out.textContent = 'Network error: ' + e.message;
+      out.style.color = '#d00';
+      console.error('Network error creating room:', e);
+    }
+  }
+
+  if (btn) btn.addEventListener('click', createRoom);
+
+  // Intercept the "Create (Redirect)" link so it uses the same flow
+  if (link) {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      createRoom();
     });
-  });
+  }
 </script>
 {% endblock %}
