@@ -1,5 +1,6 @@
 package com.example.chordproapp.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,12 +14,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.chordproapp.R
 import com.example.chordproapp.viewmodels.PlaylistViewModel
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
@@ -54,13 +58,15 @@ fun LoginScreen(
         ) {
             item {
                 // App Logo/Title
-                Text(
-                    text = "ChordPro App",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 32.dp)
+                Image(
+                    painter = painterResource(id = R.drawable.logo),
+                    contentDescription = "App Logo",
+                    modifier = Modifier
+                        .size(180.dp),
+                    contentScale = ContentScale.Fit, // crops the image to fill the container
+                    alignment = Alignment.Center // choose which part to show
                 )
+
             }
 
             item {
