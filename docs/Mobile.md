@@ -7,9 +7,6 @@ This app uses a modular structure with reusable components, clean navigation, an
 
 ## Project Structure
 
-Mobile/
-│
-
 ├── components/ # Reusable composables and UI elements (bars, etc.)
 
 ├── data/ # Data models, repositories, etc
