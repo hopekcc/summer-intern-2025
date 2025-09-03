@@ -1,4 +1,7 @@
 package com.example.chordproapp.data.model
 
-class AuthSession {
-}
+data class AuthSession(
+    val idToken: String,
+    val uid: String,
+    val displayText: String // what you show in “Hey …”
+)

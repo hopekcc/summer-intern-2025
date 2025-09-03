@@ -22,6 +22,7 @@ import com.example.chordproapp.data.repository.PlaylistRepository
 import com.example.chordproapp.viewmodels.PlaylistViewModel
 import com.example.chordproapp.data.repository.SongRepository
 import com.example.chordproapp.viewmodels.SearchViewModel
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
 
 
@@ -46,12 +47,15 @@ fun SearchScreen(
     // Repository
     val playlistRepository = remember { PlaylistRepository(idTokenProvider) }
 
+    // Get current user ID from Firebase
+    val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
     // PlaylistViewModel with inline factory
     val playlistViewModel: PlaylistViewModel = viewModel(
         key = "playlistViewModel",
         factory = object : androidx.lifecycle.ViewModelProvider.Factory {
             override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-                return PlaylistViewModel(playlistRepository) as T
+                return PlaylistViewModel(playlistRepository, currentUserId) as T
             }
         }
     )
@@ -278,22 +282,21 @@ fun SearchScreen(
                     }
                 }
             } else if (!isLoading && query.isNotEmpty()) {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(32.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                "No songs found for \"$query\"",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                            )
-                        }
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "No songs found for \"$query\"",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                        )
                     }
                 }
             }
         }
     }
-
+}
