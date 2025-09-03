@@ -1,5 +1,4 @@
 package com.example.chordproapp.navigation
-
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -35,25 +34,18 @@ fun AppNavigation(
         startDestination = "sync" // Start with Sync screen
     ) {
         composable("sync") { SyncScreen(navController) }
-
         composable("joined_sync/{roomCode}") { backStackEntry ->
             val roomCode = backStackEntry.arguments?.getString("roomCode") ?: ""
             JoinedSyncScreen(navController, roomCode)
         }
-
         composable("search") {
             SearchScreen(
                 navController = navController,  // Add this line
                 idTokenProvider = idTokenProvider
             )
         }
-
-
-
-        //playlist screens:
-
         composable("profile") {
-            ProfileScreen(navController, playlistViewModel,username = titleText, onLogout)
+            ProfileScreen(navController, playlistViewModel, onLogout)
         }
         composable("allPlaylists") {
             AllPlaylists(navController, playlistViewModel)
@@ -68,7 +60,6 @@ fun AppNavigation(
             val playlistId = backStackEntry.arguments?.getString("playlistId") ?: "" // Changed from getInt to getString
             val playlists by playlistViewModel.playlists.collectAsState(initial = emptyList())
             val playlist = playlists.find { it.id == playlistId }
-
             if (playlist != null) {
                 Playlist(
                     playlistId = playlist.id,
@@ -79,7 +70,6 @@ fun AppNavigation(
                 Text("Loading playlist...")
             }
         }
-
         composable(
             route = "viewer/{songId}/{pageCount}",
             arguments = listOf(
@@ -96,6 +86,5 @@ fun AppNavigation(
                 idTokenProvider = idTokenProvider
             )
         }
-
     }
 }
