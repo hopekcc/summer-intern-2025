@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
@@ -12,133 +13,91 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import com.example.chordproapp.viewmodel.RoomViewModel
-import com.example.chordproapp.model.Song
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun JoinedSyncScreen(
-    navController: NavHostController,
-    roomCode: String,
-    groupName: String,
-    currentUserName: String,
-    isHost: Boolean,
-    onRemoveParticipant: (String) -> Unit,
-    onLeaveRoom: () -> Unit,
-    vm: RoomViewModel = viewModel()
-) {
-    val state by vm.uiState.collectAsState()
-
-    // Theme Colors
-    val backgroundColor = Color(0xFFF7F7FF)
-    val primaryTextColor = Color(0xFF07277C)
-    val navBarColor = Color(0xFF231973)
-    val leaveButtonColor = Color(0xFFEA4E4E)
+fun JoinedSyncScreen(navController: NavHostController, roomCode: String) {
+    val nowPlaying = remember { mutableStateOf("Fur Elise") }
+    val participants = remember { mutableStateListOf("You", "Alice") }
+    val queue = remember { mutableStateListOf("Canon in D") }
 
     Scaffold(
-        containerColor = backgroundColor,
         topBar = {
             TopAppBar(
                 title = { Text("Room $roomCode", color = Color.White) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = navBarColor)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF231973))
             )
-        }
-    ) { innerPadding ->
+        },
+        containerColor = Color(0xFFF7F7FF)
+    ) { inner ->
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(inner)
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Group Info
-            Text("Group: $groupName", color = primaryTextColor)
+            Text("Group: MyGroup", color = Color(0xFF07277C))
+            Text("Now Playing", color = Color(0xFF07277C))
+            Text(nowPlaying.value)
 
-            // Queue Section
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    Text("Queue", color = primaryTextColor)
-                    LazyColumn {
-                        items(state.songQueue) { song: Song ->
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(6.dp)
-                                    .clickable {
-                                        // Navigate to PDF Viewer with song ID and total page count
-                                        navController.navigate("viewer/${song.id}/${song.pageCount}")
-                                    },
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(song.title, modifier = Modifier.weight(1f), color = primaryTextColor)
-                                if (isHost) {
-                                    IconButton(onClick = {
-                                        vm.removeSongFromQueue(roomCode, song.id)
-                                    }) {
-                                        Icon(
-                                            Icons.Default.Delete,
-                                            contentDescription = "Remove song",
-                                            tint = Color.Red
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (isHost) {
-                        Button(
-                            onClick = { /* Navigate to song selection screen */ },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Add Song / Playlist")
+            Card(
+                Modifier
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .clickable { /* toggle fullscreen */ },
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Text("Tap to view music sheet (fullscreen)", color = Color(0xFF07277C))
+                }
+            }
+
+            Text("Queue", color = Color(0xFF07277C))
+            LazyColumn {
+                items(queue) { song ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(song)
+                        TextButton(onClick = { queue.remove(song) }) {
+                            Text("Remove", color = Color(0xFF07277C))
                         }
                     }
                 }
             }
 
-            // Participants Section
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    Text("Participants", color = primaryTextColor)
-                    LazyColumn {
-                        items(state.participants) { participant ->
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(participant, modifier = Modifier.weight(1f), color = primaryTextColor)
-                                if (isHost && participant != currentUserName) {
-                                    IconButton(onClick = {
-                                        vm.removeParticipant(roomCode, participant)
-                                        onRemoveParticipant(participant)
-                                    }) {
-                                        Icon(
-                                            Icons.Default.Delete,
-                                            contentDescription = "Remove participant",
-                                            tint = Color.Red
-                                        )
-                                    }
-                                }
-                            }
+            Text("Participants", color = Color(0xFF07277C))
+            LazyColumn {
+                items(participants) { p ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(p)
+                        IconButton(onClick = { participants.remove(p) }) {
+                            Icon(Icons.Default.Delete, contentDescription = null, tint = Color.Red)
                         }
                     }
                 }
             }
 
             Spacer(Modifier.weight(1f))
-
-            // Leave Room Button
             Button(
-                onClick = {
-                    vm.leaveRoom()
-                    onLeaveRoom()
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = leaveButtonColor),
-                modifier = Modifier.fillMaxWidth()
+                onClick = { navController.popBackStack() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF231973))
             ) {
                 Text("Leave Room", color = Color.White)
             }

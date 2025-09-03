@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -12,28 +13,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.chordproapp.viewmodel.RoomViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SyncScreen(navController: NavHostController, vm: RoomViewModel = viewModel()) {
+fun HopeJamSyncScreen(navController: NavHostController) {
     var roomCode by remember { mutableStateOf("") }
-    val state by vm.uiState.collectAsState()
-
-    // colors for theme
-    val backgroundColor = Color(0xFFF7F7FF)
-    val primaryTextColor = Color(0xFF07277C)
-    val navBarColor = Color(0xFF231973)
 
     Scaffold(
-        containerColor = backgroundColor,
         topBar = {
             TopAppBar(
-                title = { Text("Sync", color = Color.White) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = navBarColor)
+                title = { Text("HopeJam Sync", color = Color.White) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF231973))
             )
-        }
+        },
+        containerColor = Color(0xFFF7F7FF)
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
@@ -43,21 +36,22 @@ fun SyncScreen(navController: NavHostController, vm: RoomViewModel = viewModel()
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
+            /** Header **/
             item {
                 Text(
                     "Ready to Share Music Sheets?",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = primaryTextColor
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = Color(0xFF07277C)
                 )
                 Text(
                     "Create a new room or join an existing one",
                     style = MaterialTheme.typography.bodyLarge,
-                    color = primaryTextColor.copy(alpha = 0.7f),
+                    color = Color(0xFF07277C).copy(alpha = 0.6f),
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
 
-            /** Create Room **/
+            /** Create Room Card **/
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -65,38 +59,58 @@ fun SyncScreen(navController: NavHostController, vm: RoomViewModel = viewModel()
                     colors = CardDefaults.cardColors(containerColor = Color.White),
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(24.dp)
+                    ) {
                         Icon(
-                            Icons.Default.PlayArrow,
+                            Icons.Filled.PlayArrow,
                             contentDescription = null,
-                            tint = primaryTextColor,
-                            modifier = Modifier.size(48.dp).padding(bottom = 16.dp)
+                            tint = Color(0xFF231973),
+                            modifier = Modifier
+                                .size(48.dp)
+                                .padding(bottom = 16.dp)
                         )
-                        Text("Create Room", style = MaterialTheme.typography.titleLarge, color = primaryTextColor)
+                        Text("Create Room", style = MaterialTheme.typography.titleLarge, color = Color(0xFF07277C))
                         Text(
-                            "Start a new session and invite others.",
+                            "You are the host! Start a new session and invite others.",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = primaryTextColor.copy(alpha = 0.7f),
+                            color = Color(0xFF07277C).copy(alpha = 0.6f),
                             modifier = Modifier.padding(vertical = 8.dp)
                         )
+
+                        OutlinedTextField(
+                            value = "",
+                            onValueChange = {},
+                            placeholder = { Text("Add songs or playlists to queue") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF231973),
+                                unfocusedBorderColor = Color(0xFF231973).copy(alpha = 0.4f),
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            )
+                        )
+
                         Button(
-                            onClick = {
-                                vm.setMode(true)
-                                vm.createRoom { ok, id ->
-                                    if (ok && id != null) {
-                                        navController.navigate("joined_sync/$id/MyGroup/Fur Elise/true/You")
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().height(56.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = navBarColor)
-                        ) { Text("Create New Room", color = Color.White) }
+                            onClick = { navController.navigate("joined_sync/ABC123") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF231973))
+                        ) {
+                            Text("Create New Room")
+                        }
                     }
                 }
             }
 
-            /** Join Room **/
+            /** Join Room Card **/
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -104,30 +118,48 @@ fun SyncScreen(navController: NavHostController, vm: RoomViewModel = viewModel()
                     colors = CardDefaults.cardColors(containerColor = Color.White),
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
-                        Text("Join Room", style = MaterialTheme.typography.titleLarge, color = primaryTextColor)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(24.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.MusicNote,
+                            contentDescription = null,
+                            tint = Color(0xFF231973),
+                            modifier = Modifier
+                                .size(48.dp)
+                                .padding(bottom = 16.dp)
+                        )
+                        Text("Join Room", style = MaterialTheme.typography.titleLarge, color = Color(0xFF07277C))
                         OutlinedTextField(
                             value = roomCode,
                             onValueChange = { roomCode = it },
                             placeholder = { Text("Enter room code (e.g. ABC123)") },
                             singleLine = true,
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF231973),
+                                unfocusedBorderColor = Color(0xFF231973).copy(alpha = 0.4f),
+                                focusedContainerColor = Color(0xFFF7F7FF),
+                                unfocusedContainerColor = Color(0xFFF7F7FF)
+                            )
                         )
                         Button(
-                            onClick = {
-                                navController.navigate("joined_sync/$roomCode/MyGroup/Fur Elise/false/You")
-                            },
-                            modifier = Modifier.fillMaxWidth().height(56.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = navBarColor)
-                        ) { Text("Join Room", color = Color.White) }
+                            onClick = { navController.navigate("joined_sync/${roomCode.ifEmpty { "ABC123" }}") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF231973))
+                        ) {
+                            Text("Join Room")
+                        }
                     }
                 }
             }
-
-            /** Status **/
-            item { Text(state.status, color = primaryTextColor) }
         }
     }
 }
