@@ -31,8 +31,22 @@ app = Flask(__name__)
 # Firebase Admin initialization
 # -----------------------------------------------------------------------------
 # Make sure serviceAccountKey.json is present in project root (DO NOT commit it)
-cred = credentials.Certificate("serviceAccountKey.json")
-firebase_admin.initialize_app(cred)
+firebase_creds_json = os.environ.get('FIREBASE_CREDENTIALS')
+if firebase_creds_json:
+    # Cloud Run - use environment variable
+    cred = credentials.Certificate(json.loads(firebase_creds_json))
+else:
+    # Local development - use file
+    try:
+        cred = credentials.Certificate("serviceAccountKey.json")
+    except FileNotFoundError:
+        print("WARNING: No Firebase credentials found. Authentication will not work.")
+        cred = None
+
+if cred:
+    firebase_admin.initialize_app(cred)
+else:
+    print("Firebase Admin SDK not initialized - authentication disabled")
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -350,4 +364,4 @@ def api_create_room():
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=False)
