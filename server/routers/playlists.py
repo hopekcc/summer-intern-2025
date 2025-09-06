@@ -7,7 +7,7 @@ from datetime import datetime
 from scripts.runtime.database import Playlist, PlaylistSong, Song, get_db_session
 from scripts.runtime.auth_middleware import get_current_user
 
-router = APIRouter()
+router = APIRouter(tags=["Playlists"])
 
 # Request Models
 class CreatePlaylistRequest(BaseModel):
@@ -27,7 +27,7 @@ async def get_user_playlist(playlist_id: str, user_id: str, session: AsyncSessio
     result = await session.execute(query)
     return result.scalar_one_or_none()
 
-@router.post("/")
+@router.post("/", summary="Create Playlist", description="Create a new playlist for the authenticated user.")
 async def create_playlist(
     request: CreatePlaylistRequest,
     current_user: dict = Depends(get_current_user),
@@ -55,7 +55,7 @@ async def create_playlist(
         "message": "Playlist created successfully"
     }
 
-@router.post("/{playlist_id}/songs")
+@router.post("/{playlist_id}/songs", summary="Add Song to Playlist", description="Add a single song to an existing playlist.")
 async def add_song_to_playlist(
     playlist_id: str,
     request: AddSongRequest,
@@ -100,7 +100,7 @@ async def add_song_to_playlist(
         "message": f"Song '{song.title}' added to playlist '{playlist.name}'"
     }
 
-@router.post("/{playlist_id}/songs/bulk")
+@router.post("/{playlist_id}/songs/bulk", summary="Add Multiple Songs", description="Add multiple songs to an existing playlist in bulk.")
 async def add_multiple_songs_to_playlist(
     playlist_id: str,
     request: AddMultipleSongsRequest,
@@ -153,7 +153,7 @@ async def add_multiple_songs_to_playlist(
         "message": f"Added {len(added_songs)} songs to playlist '{playlist.name}'"
     }
 
-@router.get("/")
+@router.get("/", summary="List User Playlists", description="Get all playlists for the authenticated user.")
 async def get_playlists(
     current_user: dict = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session)
@@ -191,7 +191,7 @@ async def get_playlists(
         "meta": {"user_id": user_id, "count": len(playlists_with_songs)}
     }
 
-@router.get("/{playlist_id}")
+@router.get("/{playlist_id}", summary="Get Playlist", description="Retrieve playlist details including all songs.")
 async def get_playlist(
     playlist_id: str,
     current_user: dict = Depends(get_current_user),
@@ -225,7 +225,7 @@ async def get_playlist(
         "message": f"Retrieved playlist '{playlist.name}'"
     }
 
-@router.delete("/{playlist_id}")
+@router.delete("/{playlist_id}", summary="Delete Playlist", description="Delete an entire playlist and all its songs.")
 async def delete_playlist(
     playlist_id: str,
     current_user: dict = Depends(get_current_user),
@@ -254,7 +254,7 @@ async def delete_playlist(
         "message": f"Playlist '{playlist.name}' deleted successfully"
     }
 
-@router.delete("/{playlist_id}/songs/{song_id}")
+@router.delete("/{playlist_id}/songs/{song_id}", summary="Remove Song from Playlist", description="Remove a specific song from a playlist.")
 async def delete_song_from_playlist(
     playlist_id: str,
     song_id: str,

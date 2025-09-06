@@ -19,7 +19,14 @@ from scripts.runtime.logger import logger as _app_logger
 logger = _app_logger.getChild("db")
 
 def get_database_url() -> str:
-    """Read DATABASE_URL from env and enforce PostgreSQL (asyncpg)."""
+    """Read DATABASE_URL from environment and enforce PostgreSQL (asyncpg).
+    
+    Returns:
+        str: PostgreSQL connection URL with asyncpg driver
+        
+    Raises:
+        RuntimeError: If DATABASE_URL is not set or uses wrong driver
+    """
     url = os.getenv("DATABASE_URL", "").strip()
     if not url:
         raise RuntimeError(
@@ -31,21 +38,48 @@ def get_database_url() -> str:
         )
     return url
 
-# --- Pool/env helpers ---
+# ============================================================================
+# Pool/Environment Helpers
+# ============================================================================
 def _parse_bool(val: str, default: bool = False) -> bool:
+    """Parse boolean value from environment variable.
+    
+    Args:
+        val: String value to parse
+        default: Default value if parsing fails
+        
+    Returns:
+        bool: Parsed boolean value
+    """
     if val is None:
         return default
     s = str(val).strip().lower()
     return s in {"1", "true", "yes", "on", "y", "t"}
 
 def _parse_int(val: str, default: int) -> int:
+    """Parse integer value from environment variable.
+    
+    Args:
+        val: String value to parse
+        default: Default value if parsing fails
+        
+    Returns:
+        int: Parsed integer value
+    """
     try:
         return int(str(val).strip()) if val is not None else default
     except Exception:
         return default
 
-# Models
+# ============================================================================
+# Database Models
+# ============================================================================
 class User(SQLModel, table=True):
+    """User model for Firebase-authenticated users.
+    
+    Stores user information from Firebase authentication with local database
+    tracking for login history and display preferences.
+    """
     __tablename__ = "users"
     
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -54,10 +88,14 @@ class User(SQLModel, table=True):
     email: str = Field(unique=True, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     last_login: Optional[datetime] = None
-    
-    # Remove room relationships since host_id is now string
 
 class Song(SQLModel, table=True):
+    """Song model for chord chart and lyric storage.
+    
+    Represents individual songs with metadata for search and organization.
+    Songs are referenced by rooms and playlists but maintain no foreign key
+    constraints for performance.
+    """
     __tablename__ = "songs"
     
     id: str = Field(primary_key=True)
@@ -71,59 +109,74 @@ class Song(SQLModel, table=True):
     filename: Optional[str] = None
     page_count: int
 
-    # Add relationship back to PlaylistSong
     playlist_songs: List["PlaylistSong"] = Relationship(back_populates="song")
 
 
 class Room(SQLModel, table=True):
-    __tablename__ = "room"  # Match original schema
+    """Room model for real-time collaborative sessions.
     
-    room_id: str = Field(primary_key=True, index=True)  # Add index for performance
-    host_id: str = Field(index=True)  # Add index for host lookups
+    Represents a session where a host can share song content with participants.
+    Uses indexed string references to songs without foreign key constraints
+    for better performance during real-time updates.
+    """
+    __tablename__ = "room"
+    
+    room_id: str = Field(primary_key=True, index=True)
+    host_id: str = Field(index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
-    # Song fields - NO foreign key constraint for performance
+    # Song fields - no foreign key constraint for performance
     current_song: Optional[str] = None
     current_page: Optional[int] = None
-    current_song_id: Optional[str] = Field(default=None, index=True)  # Just indexed string, no FK
+    current_song_id: Optional[str] = Field(default=None, index=True)
     
-    # Relationships - participants only, no song relationship
     participants: List["RoomParticipant"] = Relationship(back_populates="room")
 
 class RoomParticipant(SQLModel, table=True):
-    __tablename__ = "roomparticipant"  # Match original schema
+    """Room participant model for tracking session membership.
     
-    room_id: str = Field(foreign_key="room.room_id", primary_key=True, index=True)  # Add index
-    user_id: str = Field(primary_key=True, index=True)  # Changed to str to match Firebase UIDs
+    Links Firebase user IDs to room sessions with join timestamps.
+    Uses composite primary key for efficient participant lookups.
+    """
+    __tablename__ = "roomparticipant"
+    
+    room_id: str = Field(foreign_key="room.room_id", primary_key=True, index=True)
+    user_id: str = Field(primary_key=True, index=True)
     joined_at: datetime = Field(default_factory=datetime.utcnow)
     
     room: Room = Relationship(back_populates="participants")
 
-# Duplicate imports removed - using main imports above
-
-
 class Playlist(SQLModel, table=True):
+    """Playlist model for user-created song collections.
+    
+    Allows users to organize songs into named collections with descriptions.
+    Uses Firebase UID references without foreign key constraints.
+    """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     name: str
     description: Optional[str] = None
-    user_id: str = Field(index=True)  # Firebase UID as indexed string (no FK constraint)
+    user_id: str = Field(index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     songs: List["PlaylistSong"] = Relationship(back_populates="playlist")
 
 class PlaylistSong(SQLModel, table=True):
+    """Junction table for playlist-song relationships.
+    
+    Links playlists to songs with ordering and timestamp information.
+    Uses composite primary key for efficient playlist operations.
+    """
     playlist_id: str = Field(foreign_key="playlist.id", primary_key=True)
     song_id: str = Field(foreign_key="songs.id", primary_key=True)
     added_at: datetime = Field(default_factory=datetime.utcnow)
-    position: int = Field(default=0)  # For future ordering support
+    position: int = Field(default=0)
     playlist: Playlist = Relationship(back_populates="songs")
     song: Song = Relationship(back_populates="playlist_songs")
 
-# Single async engine configured by env (PostgreSQL-only)
-# DATABASE_URL will be set when get_engine() is called
-
-# Determine environment (dev/prod-style defaults)
+# ============================================================================
+# Database Engine Configuration
+# ============================================================================
 IS_PROD = _parse_bool(os.getenv("PROD", "0"), default=False)
 
 # Defaults differ for dev vs prod; env can override
@@ -155,10 +208,11 @@ engine_kwargs = {
     "connect_args": {"statement_cache_size": STMT_CACHE_SIZE},
 }
 
-# Log effective pool config once on startup
+# Log effective pool configuration on startup
 logger.info(
-    "db_pool_config",
+    "Database pool configuration loaded",
     extra={
+        "operation": "db_pool_config",
         "pool_size": POOL_SIZE,
         "max_overflow": MAX_OVERFLOW,
         "pool_timeout": POOL_TIMEOUT,
@@ -166,40 +220,74 @@ logger.info(
         "pre_ping": POOL_PRE_PING,
         "use_lifo": POOL_USE_LIFO,
         "stmt_cache_size": STMT_CACHE_SIZE,
-        "prod": IS_PROD,
+        "is_prod": IS_PROD,
     },
 )
 
-# Engine will be created lazily when needed
+# Global engine and session factory (initialized lazily)
 engine = None
 AsyncSessionLocal = None
 
 def get_engine():
-    """Get or create the database engine"""
+    """Get or create the database engine.
+    
+    Initializes the engine and session factory on first call.
+    Thread-safe for concurrent access during startup.
+    
+    Returns:
+        AsyncEngine: SQLAlchemy async engine instance
+    """
     global engine, AsyncSessionLocal
     if engine is None:
         DATABASE_URL = get_database_url()
         engine = create_async_engine(DATABASE_URL, **engine_kwargs)
-        AsyncSessionLocal = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False, autoflush=False, autocommit=False)
+        AsyncSessionLocal = sessionmaker(
+            bind=engine, 
+            class_=AsyncSession, 
+            expire_on_commit=False, 
+            autoflush=False, 
+            autocommit=False
+        )
     return engine
 
 def get_session_factory():
-    """Get the session factory, ensuring engine is initialized"""
-    get_engine()  # This will initialize both engine and AsyncSessionLocal
+    """Get the session factory, ensuring engine is initialized.
+    
+    Returns:
+        sessionmaker: Configured async session factory
+    """
+    get_engine()
     return AsyncSessionLocal
 
-# Database creation functions
+# ============================================================================
+# Database Initialization
+# ============================================================================
+
 async def create_db_and_tables_async():
-    """Create database and all tables (asynchronous)"""
+    """Create database and all tables asynchronously.
+    
+    Initializes all SQLModel tables in the database. Safe to call
+    multiple times as it only creates missing tables.
+    """
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
         await conn.commit()
 
-# Session management
+# ============================================================================
+# Session Management
+# ============================================================================
+
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI dependency: yield a single async session."""
-    get_engine()  # Ensure engine is initialized
+    """FastAPI dependency for database session management.
+    
+    Yields a single async session with automatic cleanup.
+    Ensures proper session lifecycle management.
+    
+    Yields:
+        AsyncSession: Database session for request handling
+    """
+    get_engine()
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -207,19 +295,39 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+# ============================================================================
+# Core Database Functions
+# ============================================================================
+
 def normalize_song_id(song_id: str) -> str:
-    """Normalize song ID by removing leading zeros from numeric IDs."""
+    """Normalize song ID by removing leading zeros from numeric IDs.
+    
+    Args:
+        song_id: Raw song ID string
+        
+    Returns:
+        str: Normalized song ID without leading zeros
+    """
     if isinstance(song_id, str) and song_id.isdigit():
         try:
-            # Convert to int and back to string to remove leading zeros
             return str(int(song_id))
         except ValueError:
             pass
     return song_id
 
-# Core database functions
 async def get_song_by_id_from_db(session: AsyncSession, song_id: str) -> Optional[Song]:
-    """Get song by ID using the provided session with smart fallback for different ID formats"""
+    """Get song by ID with smart fallback for different ID formats.
+    
+    Handles legacy ID formats including padded numeric IDs and
+    provides performance logging for database operations.
+    
+    Args:
+        session: Database session
+        song_id: Song ID to lookup
+        
+    Returns:
+        Optional[Song]: Song object if found, None otherwise
+    """
     start_time = time.perf_counter()
     
     # Normalize the input ID first
@@ -248,19 +356,46 @@ async def get_song_by_id_from_db(session: AsyncSession, song_id: str) -> Optiona
             pass
 
     elapsed = (time.perf_counter() - start_time) * 1000
-    logger.info(f"get_song_by_id_from_db", extra={"duration_ms": round(elapsed, 1), "ws_event": "db_song_lookup", "status_code": 200, "page": getattr(song, 'page_count', None)})
+    logger.info(
+        "Song lookup completed",
+        extra={
+            "operation": "get_song_by_id",
+            "song_id": song_id,
+            "found": song is not None,
+            "duration_ms": round(elapsed, 1),
+            "page_count": getattr(song, 'page_count', None)
+        }
+    )
     return song
 
 async def get_room_by_id_from_db(session: AsyncSession, room_id: str) -> Optional[Room]:
-    # Get room by ID with performance logging
+    """Get room by ID with performance logging.
+    
+    Args:
+        session: Database session
+        room_id: Room ID to lookup
+        
+    Returns:
+        Optional[Room]: Room object if found, None otherwise
+    """
     start_time = time.perf_counter()
     result = await session.execute(select(Room).where(Room.room_id == room_id))
     room = result.scalars().first()
     elapsed = (time.perf_counter() - start_time) * 1000
-    logger.info("get_room_by_id_from_db", extra={"duration_ms": round(elapsed, 1), "ws_event": "db_room_lookup"})
+    logger.info(
+        "Room lookup completed",
+        extra={
+            "operation": "get_room_by_id",
+            "room_id": room_id,
+            "found": room is not None,
+            "duration_ms": round(elapsed, 1)
+        }
+    )
     return room
 
-# Search functions
+# ============================================================================
+# Search Functions
+# ============================================================================
 async def search_songs(session: AsyncSession, query: str, limit: int = 50) -> List[Song]:
     """Search songs by title or artist using case-insensitive matching (ILIKE).
 
@@ -495,7 +630,6 @@ async def get_room(session: AsyncSession, room_id: str) -> Optional[Room]:
 
 async def log_room_action(session: AsyncSession, room_id: str, action: str, user_id: str, data: dict = None):
     """Log room action - placeholder for now"""
-    # TODO: Implement room action logging if needed
     pass
 
 

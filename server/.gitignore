@@ -19,3 +19,6 @@ server/scripts/__pycache__
 /.kiro/
 /.vscode/
 /instructional-tool/
+
+unlimited/songs
+unlimited/songs_pdf

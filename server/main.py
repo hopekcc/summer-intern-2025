@@ -17,32 +17,49 @@ from fastapi import FastAPI, Depends, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from scripts.runtime.logger import logger
+from scripts.runtime.logger import logger as _app_logger
+logger = _app_logger.getChild("main")
 from scripts.runtime.database import create_db_and_tables_async as init_database
 from scripts.runtime.database import engine as db_engine
 from scripts.runtime.database import check_db_connectivity
 from scripts.runtime.websocket_server import start_websocket_server, get_websocket_factory
 from scripts.runtime.paths import get_database_dir
 from scripts.runtime.auth_middleware import get_current_user
-from routers import songs, rooms, playlists
+from routers import songs, rooms, playlists, unlimited
 
 # Initialize FastAPI app
 app = FastAPI()
 
-# ===================================================================
+# ============================================================================
 # App State and Lifespan Events
-# ===================================================================
+# ============================================================================
 @app.on_event("startup")
 async def startup_event():
+    """Initialize application on startup.
+    
+    Sets up database, performs health checks, configures WebSocket server,
+    and initializes application state for request dependencies.
+    """
     logger.info("Starting up the application...")
     await init_database()
     logger.info("Database initialized.")
-    # Log which database/dialect we actually connected to
+    # Log database connection details
     try:
         db_url = db_engine.url.render_as_string(hide_password=True)
-        logger.info(f"DB Dialect: {db_engine.dialect.name} | URL: {db_url}")
+        logger.info(
+            "Database connection established",
+            extra={
+                "dialect": db_engine.dialect.name,
+                "url": db_url,
+                "operation": "startup_db_connect"
+            }
+        )
     except Exception:
-        logger.warning("Could not introspect database engine URL", exc_info=True)
+        logger.warning(
+            "Could not introspect database engine URL", 
+            exc_info=True,
+            extra={"operation": "startup_db_introspect"}
+        )
     
     # Optional startup DB connectivity healthcheck
     try:
@@ -52,16 +69,39 @@ async def startup_event():
         if do_check:
             ok, detail, dur_ms = await check_db_connectivity(timeout_seconds=timeout)
             if ok:
-                logger.info(f"DB startup healthcheck ok in {dur_ms:.1f}ms")
+                logger.info(
+                    "Database startup healthcheck passed",
+                    extra={
+                        "operation": "startup_healthcheck",
+                        "duration_ms": round(dur_ms, 1),
+                        "status": "success"
+                    }
+                )
             else:
-                logger.error("DB startup healthcheck failed", extra={"error": detail, "duration_ms": round(dur_ms, 1)})
+                logger.error(
+                    "Database startup healthcheck failed",
+                    extra={
+                        "operation": "startup_healthcheck",
+                        "error": detail,
+                        "duration_ms": round(dur_ms, 1),
+                        "status": "failed"
+                    }
+                )
                 if fail_on_error:
                     raise RuntimeError(f"DB healthcheck failed: {detail}")
     except Exception as e:
         # If fail_on_error is true, this will bubble; otherwise, log and continue
         if os.getenv("FAIL_ON_DB_STARTUP_ERROR", "false").lower() in ("1", "true", "yes"):
             raise
-        logger.warning(f"Startup DB healthcheck encountered an error: {e}", exc_info=True)
+        logger.warning(
+            "Startup DB healthcheck encountered an error",
+            exc_info=True,
+            extra={
+                "operation": "startup_healthcheck",
+                "error": str(e),
+                "status": "error"
+            }
+        )
     
     # Set up application state for WebSocket dependencies
     # We construct these paths at startup; dependencies will be used for requests
@@ -73,16 +113,38 @@ async def startup_event():
     # Start WebSocket server in a separate thread
     ws_port = int(os.getenv("WEBSOCKET_PORT", 8766))
     loop = asyncio.get_event_loop()
-    logger.info(f"Starting WebSocket server on port {ws_port}...")
+    logger.info(
+        "Starting WebSocket server",
+        extra={
+            "operation": "websocket_startup",
+            "port": ws_port
+        }
+    )
     try:
         asyncio.ensure_future(start_websocket_server(port=ws_port))
-        logger.info("WebSocket server started successfully.")
+        logger.info(
+            "WebSocket server started successfully",
+            extra={
+                "operation": "websocket_startup",
+                "port": ws_port,
+                "status": "success"
+            }
+        )
     except Exception as e:
-        logger.error(f"Failed to start WebSocket server: {e}", exc_info=True)
+        logger.error(
+            "Failed to start WebSocket server",
+            exc_info=True,
+            extra={
+                "operation": "websocket_startup",
+                "port": ws_port,
+                "error": str(e),
+                "status": "failed"
+            }
+        )
 
-# ===================================================================
+# ============================================================================
 # Middleware
-# ===================================================================
+# ============================================================================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allows all origins
@@ -91,12 +153,13 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-# ===================================================================
+# ============================================================================
 # API Routers
-# ===================================================================
+# ============================================================================
 app.include_router(songs.router, prefix="/songs", tags=["songs"])
 app.include_router(rooms.router, prefix="/rooms", tags=["rooms"])
 app.include_router(playlists.router, prefix="/playlists", tags=["playlists"])
+app.include_router(unlimited.router)
 
 # Initialize Firebase and database
 if FIREBASE_JSON:
@@ -115,10 +178,23 @@ else:
 
 @app.get("/")
 def root():
+    """Root endpoint for basic server status check.
+    
+    Returns:
+        dict: Basic server status message
+    """
     return {"message": "FastAPI server is online. No authentication needed."}
 
 @app.get("/protected")
 def protected_route(user_data=Depends(get_current_user)):
+    """Protected endpoint requiring Firebase authentication.
+    
+    Args:
+        user_data: Firebase user data from authentication middleware
+        
+    Returns:
+        dict: Success message with user information
+    """
     return {
         "message": "Access granted to protected route!",
         "user": {
@@ -127,11 +203,19 @@ def protected_route(user_data=Depends(get_current_user)):
         }
     }
 
-# ===================================================================
+# ============================================================================
 # Health Endpoints
-# ===================================================================
+# ============================================================================
 @app.get("/health/db")
 async def health_db(timeout: float = 1.5):
+    """Database health check endpoint.
+    
+    Args:
+        timeout: Maximum time to wait for database response in seconds
+        
+    Returns:
+        JSONResponse: Database health status with timing information
+    """
     ok, detail, dur_ms = await check_db_connectivity(timeout_seconds=timeout)
     status_code = 200 if ok else 503
     payload = {

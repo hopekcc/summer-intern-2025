@@ -1,3 +1,9 @@
+"""
+Song Scraper Module
+Web scraping utility for fetching chord charts from multiple online sources.
+Supports Ultimate Guitar, Chordie, and other chord sites with ChordPro conversion.
+"""
+
 import os
 import re
 import time
@@ -6,69 +12,123 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
-# (If BeautifulSoup is available, it could be used for parsing HTML if needed)
+
+# ============================================================================
+# CONFIGURATION AND SETUP
+# ============================================================================
 
 # Configure logging for debug mode
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)  # default, override to DEBUG for verbose output
+logger.setLevel(logging.INFO)  # Default level, override to DEBUG for verbose output
 
-# Configurable path for local songs directory (could also be set via env or passed in)
+# Environment-configurable settings
 SONGS_DIR = os.getenv("SONGS_DIR", "songs")
-# Toggle for committing to git (via env or passed argument)
 COMMIT_TO_GIT = os.getenv("COMMIT_TO_GIT", "False").lower() in ("true", "1", "yes")
 
 # Ensure the songs directory exists
 os.makedirs(SONGS_DIR, exist_ok=True)
 
+# ============================================================================
+# FILE MANAGEMENT FUNCTIONS
+# ============================================================================
+
 def save_to_file(title: str, artist: str, content: str) -> str:
     """
     Save ChordPro content to the songs directory with a safe filename.
-    Returns the absolute file path.
+    
+    Args:
+        title: Song title
+        artist: Artist name (optional)
+        content: ChordPro formatted content
+        
+    Returns:
+        str: Absolute file path of saved file
     """
     filename = f"{title}{' - ' + artist if artist else ''}.pro"
     safe_name = filename.replace(os.sep, "_").replace("..", "_")
     save_path = os.path.join(SONGS_DIR, safe_name)
+    
     with open(save_path, "w", encoding="utf-8") as f:
         f.write(content.strip() + "\n")
+    
     logger.info(f"Saved chords to {save_path}")
     return os.path.abspath(save_path)
 
 def find_local_song(title: str, artist: str = None) -> str:
     """
-    Check the local songs directory for an existing chord file (.pro/.cho/.chopro)
-    matching the title (and artist if provided). Returns the file path if found, else None.
+    Check the local songs directory for an existing chord file.
+    
+    Args:
+        title: Song title to search for
+        artist: Optional artist name for more specific matching
+        
+    Returns:
+        str: File path if found, None otherwise
+        
+    Note:
+        Searches for files with extensions: .pro, .cho, .chopro
     """
     title_norm = title.lower()
     artist_norm = artist.lower() if artist else None
     found_file = None
+    
     for filename in os.listdir(SONGS_DIR):
         if not filename.lower().endswith((".pro", ".cho", ".chopro")):
             continue
+            
         name = filename.lower()
         if title_norm in name and (artist_norm is None or artist_norm in name):
             found_file = os.path.join(SONGS_DIR, filename)
             break
+    
     if found_file:
         logger.info(f"Found local file for '{title}'{' by ' + artist if artist else ''}: {found_file}")
     else:
         logger.info(f"No local file found for '{title}'{' by ' + artist if artist else ''}")
+    
     return found_file
 
+# ============================================================================
+# WEB DRIVER MANAGEMENT
+# ============================================================================
+
 def init_selenium_driver() -> webdriver.Chrome:
-    """Initialize a headless Chrome WebDriver using webdriver-manager."""
+    """
+    Initialize a headless Chrome WebDriver using webdriver-manager.
+    
+    Returns:
+        webdriver.Chrome: Configured Chrome driver instance
+        
+    Note:
+        Driver runs in headless mode with security and performance optimizations
+    """
     chrome_options = Options()
     chrome_options.add_argument("--headless")  # Run Chrome in headless mode (no GUI)
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     # Additional options can be added for stealth or performance as needed
+    
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
     return driver
 
+# ============================================================================
+# WEB SCRAPING FUNCTIONS
+# ============================================================================
+
 def scrape_from_ultimate_guitar(title: str, artist: str = None) -> str:
     """
-    Attempt to find and scrape chords from Ultimate Guitar. Returns the raw text of the song 
-    (chords and lyrics) if found, otherwise None.
+    Attempt to find and scrape chords from Ultimate Guitar.
+    
+    Args:
+        title: Song title to search for
+        artist: Optional artist name for more specific search
+        
+    Returns:
+        str: Raw chord/lyric text if found, None otherwise
+        
+    Note:
+        Uses Selenium to navigate search results and extract chord content
     """
     query = title
     if artist:
@@ -131,7 +191,16 @@ def scrape_from_ultimate_guitar(title: str, artist: str = None) -> str:
 def scrape_from_chordie(title: str, artist: str = None) -> str:
     """
     Attempt to search Chordie for the song and retrieve ChordPro-formatted chords and lyrics.
-    Returns ChordPro text if found, else None.
+    
+    Args:
+        title: Song title to search for
+        artist: Optional artist name for more specific search
+        
+    Returns:
+        str: ChordPro formatted text if found, None otherwise
+        
+    Note:
+        Attempts to switch to ChordPro view if available on the site
     """
     query = title
     if artist:
@@ -200,10 +269,22 @@ def scrape_from_guitarsongdownload(title: str, artist: str = None) -> str:
     # Placeholder: not implemented, so return None.
     return None
 
+# ============================================================================
+# CHORDPRO CONVERSION UTILITIES
+# ============================================================================
+
 def convert_to_chordpro(chord_text: str) -> str:
     """
     Convert lyrics with chords in 'chords above lyrics' format into inline ChordPro format.
-    For each chords line followed by a lyrics line, insert chords as [Chord] within the lyrics.
+    
+    Args:
+        chord_text: Raw text with chords above lyrics
+        
+    Returns:
+        str: ChordPro formatted text with inline chord notation
+        
+    Note:
+        Processes chord lines followed by lyric lines and merges them appropriately
     """
     lines = chord_text.splitlines()
     converted_lines = []
@@ -288,13 +369,27 @@ def validate_chordpro_format(text: str) -> bool:
         return False
     return True
 
+# ============================================================================
+# HIGH-LEVEL SCRAPING INTERFACE
+# ============================================================================
+
 def fetch_song_chords(title: str, artist: str = None, debug: bool = False) -> str:
     """
-    High-level function to fetch ChordPro-formatted chords for a given song title and optional artist.
-    - Checks local storage first.
-    - Then tries Ultimate Guitar, Chordie, and GuitarSongDownload (in that order):contentReference[oaicite:5]{index=5}.
-    - If found and valid, saves to file and (if enabled) commits to git.
-    Returns the file path of the saved song, or None if not found.
+    High-level function to fetch ChordPro-formatted chords for a given song.
+    
+    Args:
+        title: Song title to search for
+        artist: Optional artist name for more specific search
+        debug: Enable debug logging if True
+        
+    Returns:
+        str: File path of saved song, or None if not found
+        
+    Process:
+        1. Checks local storage first
+        2. Tries Ultimate Guitar, Chordie, and GuitarSongDownload in order
+        3. Converts to ChordPro format if needed
+        4. Saves to file and optionally commits to git
     """
     if debug:
         logger.setLevel(logging.DEBUG)
