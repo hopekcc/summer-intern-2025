@@ -33,7 +33,10 @@ router = APIRouter()
 
 async def get_song_dependency(song_id: str, db: AsyncSession = Depends(get_db_session)) -> Song:
     """Dependency to get a song by its ID from the database asynchronously."""
-    return await get_song_by_id_from_db(db, song_id)
+    song = await get_song_by_id_from_db(db, song_id)
+    if song is None:
+        raise HTTPException(status_code=404, detail=f"Song with ID '{song_id}' not found")
+    return song
 
 async def songPDFHelper(
     song_id: str,
@@ -41,6 +44,8 @@ async def songPDFHelper(
     songs_pdf_dir: str = Depends(get_songs_pdf_dir)
 ):
     song = await get_song_by_id_from_db(db, song_id)
+    if song is None:
+        raise HTTPException(status_code=404, detail=f"Song with ID '{song_id}' not found")
     # Prefer new layout: songs_pdf/{id}.pdf
     pdf_filename = f"{song.id}.pdf"
     pdf_path = os.path.join(songs_pdf_dir, pdf_filename)
@@ -106,7 +111,7 @@ def get_songs_list_json(
             if isinstance(data, str):
                 data = json.loads(data)
         except Exception:
-            # Fallback: return text as-is inside an object for debugging
+            # Fallback: return text as-is inside an object
             data = {"raw": text}
         # FastAPI will serialize this as JSON automatically
         return data
@@ -147,7 +152,7 @@ async def get_specific_song(
     return song_dict
 
 @router.get("/{song_id}/pdf")
-def get_song_pdf(
+async def get_song_pdf(
     song_id: str, 
     current_user=Depends(get_current_user),
     pdf_path: str = Depends(songPDFHelper)
