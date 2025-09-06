@@ -1,9 +1,6 @@
 package com.example.chordproapp.viewmodels
 
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chordproapp.data.model.Playlist
@@ -64,8 +61,13 @@ class PlaylistViewModel(
             if (success) {
                 // Immediately update local state
                 _playlists.value = _playlists.value.map { pl ->
-                    if (pl.id == playlistId && !pl.songs.contains(song)) {
-                        pl.copy(songs = pl.songs + song)
+                    if (pl.id == playlistId) {
+                        val updatedSongs = if (pl.songs.any { it.id == song.id }) {
+                            pl.songs
+                        } else {
+                            pl.songs + song
+                        }
+                        pl.copy(songs = updatedSongs)
                     } else pl
                 }
             } else {
@@ -84,11 +86,19 @@ class PlaylistViewModel(
         }
     }
 
-    fun removeSongFromPlaylist(playlistId: String, songId: Int) {
+    fun removeSongFromPlaylist(playlistId: String, songId: String) {
         viewModelScope.launch {
             val success = repository.removeSong(playlistId, songId)
-            if (success) loadAllPlaylists()
-            else _errorMessage.value = "Failed to remove song"
+            if (success) {
+                // Update UI immediately
+                _playlists.value = _playlists.value.map { playlist ->
+                    if (playlist.id == playlistId) {
+                        playlist.copy(songs = playlist.songs.filterNot { it.id.toString() == songId }) // compare with String
+                    } else playlist
+                }
+            } else {
+                _errorMessage.value = "Failed to remove song"
+            }
         }
     }
 }

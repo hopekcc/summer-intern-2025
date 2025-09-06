@@ -84,12 +84,16 @@ class PlaylistRepository(tokenProvider: () -> String?) {
         }
     }
 
-    suspend fun removeSong(playlistId: String, songId: Int): Boolean {
+    suspend fun removeSong(playlistId: String, songId: String): Boolean {
         return try {
+            println("[DEBUG] Removing song $songId from playlist $playlistId")
             val response = api.removeSong(playlistId, songId)
+            println("[DEBUG] API response code: ${response.code()}")
             response.isSuccessful
         } catch (e: Exception) {
+            println("[DEBUG] Exception: ${e.message}")
             false
         }
     }
+
 }

@@ -17,7 +17,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import com.example.chordproapp.data.model.Playlist
 import com.example.chordproapp.data.repository.PlaylistRepository
 import com.example.chordproapp.viewmodels.PlaylistViewModel
 import com.example.chordproapp.data.repository.SongRepository

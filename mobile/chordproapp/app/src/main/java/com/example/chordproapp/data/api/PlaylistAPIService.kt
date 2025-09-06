@@ -52,6 +52,6 @@ interface PlaylistApiService {
     @DELETE("playlists/{id}/songs/{song_id}")
     suspend fun removeSong(
         @Path("id") playlistId: String,
-        @Path("song_id") songId: Int
+        @Path("song_id") songId: String
     ): Response<ResponseBody>
 }

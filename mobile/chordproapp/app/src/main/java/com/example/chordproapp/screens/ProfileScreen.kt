@@ -1,6 +1,5 @@
 package com.example.chordproapp.screens
 
-import android.annotation.SuppressLint
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -25,9 +24,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -54,7 +53,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -63,7 +61,6 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.chordproapp.R
 import com.example.chordproapp.viewmodels.PlaylistViewModel
-import kotlinx.coroutines.flow.take
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -219,7 +216,7 @@ fun ProfileScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "Your Sheet Collections",
+                        "Your Playlists",
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.onBackground
                     )
@@ -267,7 +264,7 @@ fun ProfileScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            "New Collection",
+                            "New Playlist",
                             style = MaterialTheme.typography.labelLarge,
                             modifier = Modifier.padding(10.dp)
                         )
@@ -439,7 +436,7 @@ fun Playlist(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 50.dp,150.dp, end = 40.dp),
+                            .padding(start = 50.dp, 150.dp, end = 40.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -458,6 +455,10 @@ fun Playlist(
                         onClick = {
                             navController.navigate("viewer/${song.id}/${song.pageCount}")
                         }
+//                        ,
+//                        onDelete = {
+//                            playlistViewModel.removeSongFromPlaylist(playlist.id, song.id.toString())
+//                        }
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                 }
@@ -467,7 +468,13 @@ fun Playlist(
 }
 
 @Composable
-fun SongButton(songTitle: String, composer: String, onClick: () -> Unit) {
+fun SongButton(
+    songTitle: String,
+    composer: String,
+    onClick: () -> Unit
+//    ,
+//    onDelete: () -> Unit
+){
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -483,10 +490,29 @@ fun SongButton(songTitle: String, composer: String, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(songTitle, style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface)
-            Text(composer, style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+            Column {
+                Text(
+                    songTitle, style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Spacer(modifier = Modifier.height(5.dp))
+
+                Text(
+                    composer, style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
+            }
+//            IconButton(
+//                onClick = { onDelete() },
+//                modifier = Modifier.size(32.dp)
+//            ) {
+//                Icon(
+//                    imageVector = Icons.Default.Delete,
+//                    contentDescription = "Delete Song",
+//                    tint = MaterialTheme.colorScheme.error
+//                )
+//            }
         }
     }
 }
@@ -517,7 +543,7 @@ fun AllPlaylists(
                         popUpTo("allPlaylists") { inclusive = true }
                     }}
                     Text(
-                        "All Sheet Collections",
+                        "All Playlists",
                         style = MaterialTheme.typography.headlineLarge,
                         color = MaterialTheme.colorScheme.onBackground
                     )
@@ -564,7 +590,7 @@ fun NewPlaylist(
                     BackButton { navController.popBackStack()}
 
                     Text(
-                        "Create Collection",
+                        "Create Playlist",
                         style = MaterialTheme.typography.headlineLarge,
                         color = MaterialTheme.colorScheme.onBackground
                     )
@@ -578,7 +604,7 @@ fun NewPlaylist(
                     onValueChange = { playlistName = it },
                     label = {
                         Text(
-                            "New Collection Name",
+                            "New Playlist Name",
                             style = MaterialTheme.typography.bodyLarge
                         )
                     },
@@ -620,7 +646,7 @@ fun NewPlaylist(
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
                 ) {
                     Text(
-                        "Create New Collection",
+                        "Create New Playlist",
                         style = MaterialTheme.typography.labelLarge
                     )
                 }
