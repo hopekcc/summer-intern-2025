@@ -11,7 +11,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 class PlaylistViewModel(
-    val repository: PlaylistRepository
+    val repository: PlaylistRepository,
+    private val userId: String // Add userId to ensure user-specific operations
 ) : ViewModel() {
 
     var newlyCreatedPlaylists = mutableStateMapOf<String, Boolean>()
